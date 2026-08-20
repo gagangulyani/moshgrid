@@ -41,7 +41,7 @@ All constraints from [`README.md`](README.md#global-constraints). Added for this
 Do not start until all four hold:
 
 - [ ] At least one physical iPhone running iOS 26 or later is available for testing
-- [ ] An Apple Developer account exists, since BLE background modes cannot be tested on a free provisioning profile
+- [ ] An Apple Developer account exists. **Not** for the reason an earlier draft gave — `UIBackgroundModes` is an Info.plist key, not an entitlement, so a free Personal Team profile plausibly does handle `bluetooth-central`; that claim was unsourced and is probably wrong. The real reasons are the **7-day expiry** of free-profile builds, which makes multi-day festival measurement impractical, and **ActivityKit push updates** (Task 4), which do need APNs
 - [ ] Phases 3–5 are stable on Android — porting an unstable link doubles the debugging surface
 - [ ] Phase 8's attack suite passes on Android, so any iOS failure is known to be iOS-specific
 
@@ -70,6 +70,8 @@ Do not start until all four hold:
 **Interfaces:**
 - Produces: the same `MoshgridAccount` and `MoshgridSession` surface as Android, in Swift.
 
+- [ ] **Step 0: Add `staticlib` to the crate type.** Phase 0 sets `crate-type = ["cdylib", "lib"]`, which never produces the `.a` this task's `xcodebuild` invocation consumes. Change it to `["staticlib", "cdylib", "lib"]` or the build below references a file that does not exist.
+
 - [ ] **Step 1: Add the Apple targets**
 
 ```bash
@@ -87,12 +89,20 @@ for target in aarch64-apple-ios aarch64-apple-ios-sim; do
   cargo build --release --target "$target"
 done
 
-cargo run --bin uniffi-bindgen generate src/moshgrid_crypto.udl \
+cargo run --features=uniffi/cli --bin uniffi-bindgen generate src/moshgrid_crypto.udl \
   --language swift --out-dir ../modules/moshgrid-core/ios/generated
 
+# UniFFI emits *FFI.modulemap; Xcode only looks for module.modulemap.
+mv ../modules/moshgrid-core/ios/generated/moshgrid_cryptoFFI.modulemap \
+   ../modules/moshgrid-core/ios/generated/module.modulemap
+
+# -headers is not optional in practice: without the FFI header and modulemap
+# the XCFramework contains an unusable blob and the Swift import fails.
 xcodebuild -create-xcframework \
   -library target/aarch64-apple-ios/release/libmoshgrid_crypto.a \
+  -headers ../modules/moshgrid-core/ios/generated \
   -library target/aarch64-apple-ios-sim/release/libmoshgrid_crypto.a \
+  -headers ../modules/moshgrid-core/ios/generated \
   -output ../modules/moshgrid-core/ios/MoshgridCrypto.xcframework
 ```
 
@@ -165,7 +175,11 @@ The consequence: an iOS device advertises its service UUID only. All identifying
 
 - [ ] **Step 1: Implement** an ActivityKit LiveActivity showing nearby friend count and unread messages, which keeps the app active on the Lock Screen and meaningfully extends scanning beyond a plain background.
 
-- [ ] **Step 2: Be precise about the ceiling.** A LiveActivity extends foreground-ish execution; it does not restore relay capability, and scanning still stops when the screen sleeps. Do not let it become the basis for a claim the platform does not support.
+- [ ] **Step 2: Be precise about the ceiling — and note that an earlier draft had this backwards in both directions.**
+
+  ActivityKit grants **no** additional background execution. An app with a running Live Activity is suspended on the same schedule as any other; updates arrive from the foreground app, a BGTask, or an ActivityKit push. And `bluetooth-central` scanning does **not** stop when the screen sleeps.
+
+  So build the Live Activity as **UI**, because a glanceable "3 friends nearby" is genuinely useful. Do not build it as a runtime extension, because it is not one.
 
 - [ ] **Step 3: Make it genuinely useful** — showing "3 friends nearby" is worth the battery. Showing "MoshGrid is running" is not, and the user will dismiss it.
 

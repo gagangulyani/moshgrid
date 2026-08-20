@@ -119,11 +119,17 @@ export const MIGRATIONS: string[] = [
   );
 
   CREATE TABLE IF NOT EXISTS contacts (
-    device_id      TEXT PRIMARY KEY,
-    ed25519_pub    TEXT    NOT NULL,
-    curve25519_pub TEXT    NOT NULL,
-    display_name   TEXT    NOT NULL,
-    added_at       INTEGER NOT NULL
+    device_id       TEXT PRIMARY KEY,
+    ed25519_pub     TEXT    NOT NULL,
+    curve25519_pub  TEXT    NOT NULL,
+    one_time_key    TEXT,
+    display_name    TEXT    NOT NULL,
+    added_at        INTEGER NOT NULL,
+    -- Replay window, per spec 6.3. Destination-side only: sequence state is
+    -- kept for known contacts, never for strangers, because per-origin state
+    -- for strangers is precisely the unbounded memory an attacker targets.
+    highest_sequence INTEGER NOT NULL DEFAULT 0,
+    replay_bitmap    BLOB    NOT NULL DEFAULT x'00'
   );
 
   CREATE TABLE IF NOT EXISTS sessions (

@@ -20,7 +20,7 @@ V1 delivers three things, on two or more physical Android phones, with no server
 
 | Deferred | Why | Revisited in |
 |---|---|---|
-| iOS | No test device available; iOS 26 restricts BLE relaunch to AccessorySetupKit apps, so iOS can never be a reliable relay | Phase 9 |
+| iOS | No test device available. A backgrounded iPhone's service UUIDs sit in an overflow area Android cannot see, and `CBPeripheralManager` cannot advertise manufacturer data at all — so iOS cannot be a reliable relay. See §3.4 | Phase 9 |
 | Backend server, accounts, push | Competes with mesh work; every V1 feature works without it | Post-V1 |
 | Medical dispatch SoS | Safety-critical and regulated; needs a signed medical provider and a proven mesh first | Own spec cycle |
 | Super-node relay hardware | Independent physical product | Own spec cycle |
@@ -78,10 +78,14 @@ Android is the only platform where this can work correctly. A `ForegroundService
 
 iOS cannot be a reliable relay, and the decisive reasons are structural rather than policy:
 
-- **`CBPeripheralManager` cannot advertise manufacturer-specific data at all** — `startAdvertising` accepts only a local name and service UUIDs. The 6-byte presence beacon has nowhere to live on iOS.
-- **A backgrounded iPhone's service UUID moves to an "overflow area"** readable only by other iOS devices actively scanning for that exact UUID. An Android phone generally cannot see a backgrounded iPhone at all.
+- **`CBPeripheralManager` cannot advertise manufacturer-specific data at all** — `startAdvertising` supports only `CBAdvertisementDataLocalNameKey` and `CBAdvertisementDataServiceUUIDsKey`. The 6-byte presence beacon has nowhere to live on iOS.
+- **A backgrounded iPhone's service UUIDs move to an "overflow area"** discoverable "only by an iOS device explicitly scanning for them", and the local name is not advertised at all. An Android phone generally cannot see a backgrounded iPhone.
 
-Apple's TN3115 relaunch rules (only AccessorySetupKit apps are relaunched for Bluetooth events, and that framework needs a system picker per accessory) point the same way, but they govern relaunch of a *terminated* app rather than background BLE generally — so they are the supporting argument, not the load-bearing one. The source PDF's own honest assessment agrees: iOS is an opportunistic contributor, never a relay.
+**A correction, because an earlier draft of this document got it wrong and the error came from a bad source.** That draft said iOS 26 relaunches an app for BLE events *only* if it uses AccessorySetupKit. TN3115 does not say that. The AccessorySetupKit note is attached to **two rows** of its relaunch table — app force-quit by the user, and Control Center Bluetooth toggled. An app terminated by the system or crashed is **still relaunched** by plain state restoration, and so is a rebooted device after first unlock.
+
+The wrong version was near-verbatim a GitHub issue's paraphrase which had dropped the row scoping — and that paraphrase was what our own initial fact-check of the source PDFs relied on. A secondary source that compresses a table into a sentence is exactly where this kind of error is manufactured, and it survived because the sentence sounded authoritative.
+
+TN3115 therefore supports the conclusion but does not carry it. The overflow area and the missing manufacturer payload do. The source PDF's own honest assessment agrees: iOS is an opportunistic contributor, never a relay.
 
 This also matches the available hardware: two or more Android phones, no iPhone.
 

@@ -44,8 +44,6 @@ suite that proves nothing is worse than no suite, because it is trusted.
 | A5 | `buildFrame` could not construct a valid frame after the type gained a field | High | **2** | signature vs type |
 | A6 | **Privacy regression:** `origin_pubkey` in cleartext makes presence confirmable with cryptographic certainty by anyone holding a public contact bundle | **High** | **2** | spec §6.1 vs §6.3 |
 | A7 | Guarantee "nobody can alter a frame in flight" was false — `hop_count`/`copies` are unsigned and attacker-controlled | High | 1 | `phase-8:401` pins it as intended |
-| A8 | Replay protection did not exist: spec and plan stated opposite rules, `highestSequence` read but never written or stored | High | 1 | grep: two reads, zero writes |
-| A9 | Dedup wrote to the seen-set before signature verification — keyless flooding evicts genuine entries | High | 1 | ordering unstated |
 | A10 | `copies > previous hop's value` is vacuous — no signed hop chain exists, so the check compares the field to itself | Medium | 1 | — |
 | A11 | `sessions` keyed per contact breaks Olm, which has concurrent sessions per device; overwriting loses in-flight messages | High | 1 | schema vs Olm semantics |
 | A12 | **Phase 7 architecture was wrong twice:** PMTiles rejected via an invented causal clause welded to a real quote; `LocalTilesSource` does not exist and custom tile sources cannot be registered from Kotlin at all | **Critical** | 1 | MapLibre docs + source class list |
@@ -74,6 +72,8 @@ suite that proves nothing is worse than no suite, because it is trusted.
 
 | # | Defect | Severity |
 |---|---|---|
+| B23 | **Replay protection still does not exist.** The spec was rewritten to specify a highest-seen + 1024-bit bitmap and named `highest_sequence` / `replay_bitmap` columns — but no schema declares them, `highestSequence` is still read twice and written zero times, and no test covers the bitmap. **This was marked "Fixed" on the strength of a prose change alone; that was a false green and is corrected here.** | **High** |
+| B24 | No test asserts that the seen-set is written only *after* signature verification — the keyless-flood eviction attack the spec describes is untested in the phase whose job is to attack | High |
 | B1 | `expo-sqlite` cannot run under jest — Phase 1 Tasks 1, 5, 6 test suites unexecutable. Fix is an injected DB opener | **Critical** |
 | B2 | `expo-crypto` returns undefined under jest — `digestStringAsync`, `randomUUID`. Fix is a pure-JS hash and the `idFn` seam | **Critical** |
 | B3 | `deviceIdFromEd25519` declared sync, implemented async; `expect(a).not.toBe(b)` on two Promises passes **vacuously** | High |
