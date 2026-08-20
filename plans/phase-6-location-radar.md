@@ -6,7 +6,7 @@
 
 **Architecture:** location updates are just another payload type on the existing mesh — no new transport. The radar is a pure function of two coordinates and a compass heading, so it is fully unit-testable.
 
-**Tech Stack:** `expo-location`, `expo-sensors` (magnetometer), React Native, fast-check.
+**Tech Stack:** `expo-location` (position **and** heading), `expo-task-manager` (background updates), `expo-haptics`, React Native, fast-check.
 
 **Spec:** [`../docs/design.md`](../docs/design.md) §2
 
@@ -54,12 +54,27 @@ Pure functions, no device, no permissions. Everything visual is built on these, 
 - [ ] **Step 1: Write the failing tests**
 
 ```typescript
-test('distance between two known points matches a published value', () => {
-  // London Eye to Big Ben ≈ 700 m. Use a real, checkable pair.
+test('distance between two known points matches a computed value', () => {
+  // London Eye to Big Ben. Haversine with R = 6 371 000 m gives 450.95 m.
+  // Radius choice is negligible here: WGS-84 equatorial gives 451.46, polar 449.95.
+  //
+  // An earlier draft asserted 470 with toBeCloseTo(..., -2). Jest's tolerance is
+  // 0.5 * 10^(-numDigits), so -2 meant +/-50 m — it accepted anything in
+  // [420, 520] and passed happily beside a comment claiming 700 m. A gate that
+  // wide is blind to every bug that matters at festival range.
   expect(distanceMetres(
     { lat: 51.5033, lon: -0.1196 },
     { lat: 51.5007, lon: -0.1246 },
-  )).toBeCloseTo(470, -2);
+  )).toBeCloseTo(450.9, 0);   // +/-0.5 m
+});
+
+test('distance is accurate at the scale people actually stand apart', () => {
+  // 200 m due north of the first point. The reference test above is 450 m;
+  // most of this app's work happens well inside that.
+  expect(distanceMetres(
+    { lat: 51.5033, lon: -0.1196 },
+    { lat: 51.50510, lon: -0.1196 },
+  )).toBeCloseTo(200, 0);
 });
 
 test('distance from a point to itself is zero', () => { /* ... */ });
@@ -80,7 +95,9 @@ test('property: bearing there and back differs by 180 degrees', () => { /* fast-
 
 The two property tests catch sign and wraparound errors, which are the bugs that make a radar arrow point confidently in exactly the wrong direction.
 
-- [ ] **Step 2: Implement** with the haversine formula. Do not use a flat-earth approximation; it is wrong enough at festival scale to matter and costs nothing to avoid.
+- [ ] **Step 2: Implement** with the haversine formula.
+
+  Use haversine because it is correct everywhere and costs nothing, **not** because the flat-earth approximation is inaccurate here — an earlier draft claimed that and it is false. Equirectangular *with* the `cos(lat)` factor agrees with haversine to under a millimetre at these distances. What the tests above actually catch is a **missing `cos(lat)` factor** or **transposed lat/lon**, both of which produce 626.65 m for the reference pair. Those are the real bugs; say so rather than inventing a precision argument.
 
 - [ ] **Step 3: Commit**
 
@@ -95,7 +112,11 @@ The two property tests catch sign and wraparound errors, which are the bugs that
 
 **Interfaces:**
 - Produces: `encodePayload(p: Payload): Uint8Array`, `decodePayload(b): Payload` where `Payload = { kind: 'message'; body: string } | { kind: 'location'; lat: number; lon: number; accuracy: number; at: number }`.
-- Produces: `shareLocation(to, fix)` on `MeshEngine`.
+- **Modifies the `MeshEngine` interface**, which is why this is a task step and not a footnote.
+
+  `shareLocation` is **not** on the interface today — `src/mesh/MeshEngine.ts` declares exactly `start`, `stop`, `sendMessage`, `addContact`, `observePeers`, `observeMessages`, `observeDiagnostics`. Adding it to `RealMeshEngine` alone would fail to compile at every call site holding a `MeshEngine`. Adding it to the interface obliges every implementor, and `describeMeshEngineContract` is run against three constructions (FakeLink here, BleLink in Phase 3, iOS BleLink in Phase 9).
+
+  So Task 2 must: amend `src/mesh/MeshEngine.ts` with `shareLocation(to: DeviceId, fix: LocationFix): Promise<void>`, extend the contract suite to cover it, and state what each implementation does. This is a legitimate interface change, not a seam violation — but it is the kind that has to be made deliberately.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -145,7 +166,11 @@ test('a global off switch overrides every per-contact setting', () => { /* ... *
 - Create: `src/location/LocationService.ts`
 - Modify: `service/PowerPolicy.kt`
 
-- [ ] **Step 1: Implement** with `expo-location`, requesting foreground permission first and background only if the user enables sharing while the app is closed. Asking for background location up front gets apps rejected and users alarmed.
+- [ ] **Step 1: Implement** with `expo-location`. Name the calls explicitly: `requestForegroundPermissionsAsync`, then `requestBackgroundPermissionsAsync` only after the user opts into sharing that should outlive the app being backgrounded, then `startLocationUpdatesAsync(TASK_NAME, ...)` with `TaskManager.defineTask` registered at **module scope**, never inside a component.
+
+  An earlier draft said to request background permission "while the app is closed". That is not implementable — permission prompts need a foreground activity, so the app must be open to ask. The real trigger is the user enabling a sharing mode that will need to keep running once they put the phone away.
+
+  On Android 11+ background location is **not** a second dialog: the OS requires a trip to app settings to pick "Allow all the time". Handle that as a guided flow, not a prompt. Android 14 also requires `FOREGROUND_SERVICE_LOCATION`, which Phase 5's service must declare.
 
 - [ ] **Step 2: Duty-cycle by power mode** — extend `PowerPolicy` with a GPS interval per mode rather than inventing a second policy object. One place decides all power behaviour.
 
@@ -163,7 +188,15 @@ test('a global off switch overrides every per-contact setting', () => { /* ... *
 
 - [ ] **Step 1: Write the failing tests** against the pure logic — arrow rotation for a given bearing and heading, distance formatting, and the stale-fix state. Render tests, not device tests.
 
-- [ ] **Step 2: Implement.** A large arrow rotating to `relativeBearing`, distance beneath it, and the fix age. When the fix is older than two minutes, show the age prominently and fade the arrow — a confident arrow pointing at where someone was ten minutes ago is worse than no arrow.
+- [ ] **Step 2: Implement.** Take heading from `Location.watchHeadingAsync`, using its **`trueHeading`** field — not the raw `expo-sensors` magnetometer.
+
+  The magnetometer yields 3-axis microtesla readings in the device frame; turning those into a compass heading needs tilt compensation against the accelerometer, and still leaves you with *magnetic* heading while `bearingDegrees` is true-north referenced. `trueHeading` is declination-corrected by the OS. It returns `-1` without location permission, so handle that.
+
+  For scale: UK declination is about +1.1°, which at 200 m is under 4 m of lateral error — below GPS noise, so this is not a UK bug. At 13° E it is 46 m, which points past the person entirely. Use `trueHeading` because it is correct everywhere, not because the UK forces it.
+
+  Surface `accuracy < 2` from `LocationHeadingObject` as a "calibrate your compass" state — an uncalibrated magnetometer drifts far more than declination ever will, and that is the failure users actually hit.
+
+  A large arrow rotating to `relativeBearing`, distance beneath it, and the fix age. When the fix is older than two minutes, show the age prominently and fade the arrow — a confident arrow pointing at where someone was ten minutes ago is worse than no arrow.
 
 - [ ] **Step 3: Getting-warmer indicator** — compare the current distance with a short rolling window and show closer / further / holding. This is the part people actually use while walking.
 
