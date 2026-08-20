@@ -76,13 +76,24 @@ The source PDF rejected Expo on the grounds that "background BLE requires native
 
 Choosing Expo also buys EAS Build, so Gradle and signing are not a per-phase tax.
 
-### 3.6 Offline maps: MBTiles, not PMTiles
+### 3.6 Offline maps: a local file behind a URL scheme, not a custom source
 
-MapLibre Native on Android supports the `pmtiles://` protocol, but **PMTiles sources do not support offline packs or caching** — they need live HTTP range requests, failing exactly when the app must work.
+V1 ships **a single local tile archive per festival**, generated from OpenStreetMap extracts with Planetiler, and points the MapLibre style at it with a URL scheme. No tile provider, no API key, no rate limit, no third-party terms that can change, and **no custom native code**.
 
-V1 uses **MBTiles festival packs** generated from OpenStreetMap extracts with Planetiler, registered through a custom `LocalTilesSource`. One file, guaranteed offline, no tile provider, no API key, no rate limit, no third-party terms that can change. Registering the source is incremental work given the Kotlin module already exists.
+MapLibre Native already ships both local schemes and wires them into its default resource loader:
 
-`OfflineManager.createPack()` was considered and rejected: it downloads from a live style URL, requires network at pack-creation time, and makes a tile vendor's terms part of the product.
+- `mbtiles://file:///absolute/path.mbtiles` — in the Android core since 9.3.0
+- `pmtiles://file:///absolute/path.pmtiles` — documented alongside `pmtiles://https://` for remote
+
+**A correction worth recording, because it nearly cost the project a subsystem.** An earlier draft of this spec rejected PMTiles on the grounds that "PMTiles sources do not support offline packs or caching — they need live HTTP range requests." The first half is a verbatim quote from MapLibre's docs. The second half is invented, and false: the offline-pack restriction concerns `OfflineManager`'s tile-pack database, which is irrelevant when the whole archive is already a local file. `pmtiles://file://` is fully offline. (The "or caching" half is also now stale — Android 13.3.0 added an ambient cache for PMTiles sources.)
+
+A real quote with an invented explanation welded onto it is the most dangerous shape a wrong claim can take, because the quote survives spot-checking and the explanation is what gets acted on.
+
+That draft also specified a custom Kotlin `LocalTilesSource`. **No such API exists.** MapLibre Android's source classes are `CustomGeometrySource`, `GeoJsonSource`, `ImageSource`, `RasterDemSource`, `RasterSource`, `VectorSource` and supporting types — and `CustomGeometrySource` accepts parsed GeoJSON features, not raw tile bytes. Custom tile sources cannot be registered from Kotlin on Android at all. The planned work would have reimplemented, in the wrong language and through an API that does not exist, code that already ships in the dependency — including the TMS/XYZ y-flip and the cached database handle.
+
+**Format choice is deferred to a measured spike**, not decided here. Both schemes are local-file capable; what matters is which is compiled into the MapLibre build inside the `@maplibre/maplibre-react-native` version actually installed. Phase 7 Task 1 verifies that on a device before anything is built on it.
+
+`OfflineManager.createPack()` was considered and rejected on grounds that do survive scrutiny: it downloads from a live style URL, requires network at pack-creation time, and makes a tile vendor's terms part of the product.
 
 ## 4. Corrections carried from the source PDF
 
