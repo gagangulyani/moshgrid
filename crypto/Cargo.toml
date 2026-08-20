@@ -1,0 +1,22 @@
+[package]
+name = "moshgrid_crypto"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "moshgrid_crypto"
+
+[dependencies]
+vodozemac = "0.10"
+uniffi = "0.32"
+thiserror = "2"
+
+[build-dependencies]
+uniffi = { version = "0.32", features = ["build"] }
+
+# Required for `cargo run --bin uniffi-bindgen`. Without this target the
+# command fails with "no bin target named `uniffi-bindgen`".
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"

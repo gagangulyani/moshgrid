@@ -44,3 +44,7 @@ yarn-error.*
 modules/*/android/build/
 modules/*/android/.gradle/
 .gradle/
+
+# Rust
+crypto/target/
+modules/*/android/src/main/jniLibs/

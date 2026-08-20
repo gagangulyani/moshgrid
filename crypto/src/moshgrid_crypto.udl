@@ -1,0 +1,29 @@
+namespace moshgrid_crypto {};
+
+dictionary IdentityKeys {
+    string ed25519;
+    string curve25519;
+};
+
+[Error]
+enum CryptoError {
+    "Unpickle",
+    "InvalidKey",
+};
+
+interface MoshgridAccount {
+    // Named `new` deliberately: UniFFI treats only a constructor named `new`
+    // as primary, and emits it as a real Kotlin constructor. Any other name
+    // becomes a companion-object function, so `MoshgridAccount()` would not
+    // compile. `unpickle` is intentionally an alternate, called as
+    // `MoshgridAccount.unpickle(...)`.
+    constructor();
+
+    [Name=unpickle, Throws=CryptoError]
+    constructor(string pickle, bytes key);
+
+    IdentityKeys identity_keys();
+    sequence<string> one_time_keys(u32 count);
+    [Throws=CryptoError] string pickle(bytes key);
+    string sign(bytes message);
+};
