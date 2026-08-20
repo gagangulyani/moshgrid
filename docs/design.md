@@ -45,7 +45,7 @@ Olm is 3DH + Double Ratchet — the same construction as Signal Protocol, and th
 
 MLS (OpenMLS, mls-rs) was considered and rejected: MLS assumes a Delivery Service that orders handshake messages. A delay-tolerant mesh provides no ordering guarantee, so MLS would fight the transport.
 
-**Known issue, handled:** in February 2026 a researcher reported that vodozemac does not reject all-zero X25519 Diffie-Hellman outputs (non-contributory keys). Matrix disputes exploitability — identity keys and pre-keys are Ed25519-signed and verified before session establishment — and has agreed to add the check as defence in depth. **We apply the check ourselves rather than waiting for the upstream release** (Phase 1, Task 4).
+**Known issue, handled:** in February 2026 a researcher reported that vodozemac does not reject all-zero X25519 Diffie-Hellman outputs (non-contributory keys). Matrix disputes exploitability — identity keys and pre-keys are Ed25519-signed and verified before session establishment — and has agreed to add the check as defence in depth. **We apply the check ourselves rather than waiting for the upstream release** (Phase 1, Task 2).
 
 ### 3.3 The security lesson that shapes the architecture
 
@@ -60,11 +60,28 @@ The conclusion is not "pick a better crypto library." It is that **mesh-layer fr
 - Frames are size-bucketed so ciphertext length leaks less about message length.
 - The attack suite in Phase 8 tests these properties directly, as tests that must fail before they pass.
 
-What this does **not** claim is a mesh where only known contacts can transmit. Any device can join and emit well-formed frames; that is inherent to an open mesh and is bounded rather than eliminated (§10). The guarantee is narrower and worth stating precisely: **nobody can forge a frame attributed to a specific person, alter one in flight, or read one they are relaying.**
+What this does **not** claim is a mesh where only known contacts can transmit. Any device can join and emit well-formed frames; that is inherent to an open mesh and is bounded rather than eliminated (§10).
+
+The guarantee is narrower than an earlier draft of this document stated, and the precision matters:
+
+> **Nobody can forge a frame attributed to a specific person, alter its routing header or payload in flight, or read one they are relaying.**
+
+The earlier wording said "alter one in flight", full stop. That was false. `hop_count` and `copies` sit **outside** the signature deliberately, because a relay has to increment them — so any relay can reset `hop_count` to 0 (extending a frame's reach for its whole TTL) or raise `copies` back to `SPRAY_L` (spray amplification), and neither is detectable. They are attacker-controlled at every hop, bounded only by `MAX_HOPS` and `SPRAY_L`. Phase 8 pins this as intended behaviour in a test named for it, so the guarantee sentence has to match.
+
+**The cost of self-contained verification, stated plainly.** §6.1 truncates identity to 8 bytes on the wire on purpose. §6.3 then puts the full 32-byte Ed25519 key in cleartext in every frame, readable by every relay. Contact bundles are public by construction — they are QR codes people hand out. So **anyone who has ever obtained a person's bundle can afterwards confirm that person's presence, passively and with cryptographic certainty, from any frame that person originated.** Not inference from an advert prefix: proof.
+
+That is a real privacy regression, introduced by the fix for the relay problem, and it is recorded in §10 rather than left implicit. The alternative — encrypting the pubkey to the destination — would restore the original problem of relays being unable to verify anything. This design takes the trade deliberately; it should not be taken silently.
 
 ### 3.4 Platform: Android first
 
-Android is the only platform where this can work correctly. A `ForegroundService` plus `PendingIntent`-based scanning runs inside the Bluetooth stack and survives Doze. iOS 26 relaunches an app for BLE events **only** if it uses AccessorySetupKit, which requires a system picker UI per peer and is unusable for automated mesh. The source PDF's own honest assessment agrees: iOS is an opportunistic contributor, never a relay.
+Android is the only platform where this can work correctly. A `ForegroundService` plus `PendingIntent`-based scanning registers inside the Bluetooth stack, so the registration outlives the app process. (What the app may then *do* with a result is constrained by Doze, which ignores wake locks — see Phase 5. The earlier claim that this design "survives Doze" was too strong.)
+
+iOS cannot be a reliable relay, and the decisive reasons are structural rather than policy:
+
+- **`CBPeripheralManager` cannot advertise manufacturer-specific data at all** — `startAdvertising` accepts only a local name and service UUIDs. The 6-byte presence beacon has nowhere to live on iOS.
+- **A backgrounded iPhone's service UUID moves to an "overflow area"** readable only by other iOS devices actively scanning for that exact UUID. An Android phone generally cannot see a backgrounded iPhone at all.
+
+Apple's TN3115 relaunch rules (only AccessorySetupKit apps are relaunched for Bluetooth events, and that framework needs a system picker per accessory) point the same way, but they govern relaunch of a *terminated* app rather than background BLE generally — so they are the supporting argument, not the load-bearing one. The source PDF's own honest assessment agrees: iOS is an opportunistic contributor, never a relay.
 
 This also matches the available hardware: two or more Android phones, no iPhone.
 
@@ -101,15 +118,15 @@ The source PDFs were AI-generated and audited on 2026-08-20. Ten defects were ve
 
 | # | PDF claim | Reality | Resolution | Enforced by |
 |---|---|---|---|---|
-| 1 | X25519 shared secret is 128 bytes | 32 bytes (RFC 7748) | Sizes asserted in code | Phase 1, Task 4 |
+| 1 | X25519 shared secret is 128 bytes | 32 bytes (RFC 7748) | Sizes asserted in code | Phase 1, Task 2 |
 | 2 | libsignal, cost "Free" | AGPL-3.0-only | vodozemac (Apache-2.0) | Phase 0, Task 5 (CI licence gate) |
-| 3 | Bridgefy failed due to custom crypto | Broken again *after* adopting libsignal | Signed routing headers | Phase 8, Task 1 |
-| 4 | Bloom `h1 = d mod 256`, `h2 = (d>>8) mod 256` | Both read the low 16 bits — correlated, real FP rate exceeds the table | Two independently keyed SipHash instances | Phase 4, Task 2 |
-| 5 | 31-byte advertisement payload | 31 bytes is the **total** AD budget including per-element headers; ~6 bytes are usable | Legacy advert is a presence beacon only | Phase 3, Task 2 |
+| 3 | Bridgefy failed due to custom crypto | Broken again *after* adopting libsignal | Signed routing headers | Phase 8, Task 2 |
+| 4 | Bloom `h1 = d mod 256`, `h2 = (d>>8) mod 256` | Both read the low 16 bits — correlated, real FP rate exceeds the table | Two independently keyed SipHash instances | Phase 2, Task 3 |
+| 5 | 31-byte advertisement payload | 31 bytes is the **total** AD budget including per-element headers; ~6 bytes are usable | Legacy advert is a presence beacon only | Phase 3, Task 1 |
 | 6 | Advertising at 211 ms | `ADVERTISE_MODE_BALANCED` is 250 ms | Use named constants, never magic numbers | Phase 3, Task 1 |
 | 7 | Expo cannot do background BLE | Expo Modules API is built for it | Expo + dev client | Phase 0, Task 2 |
-| 8 | Spray copies L=32, "standard is 16" | *L* is a free parameter in the literature, not a constant | L is configurable, default 8, measured | Phase 4, Task 5 |
-| 9 | Delivery rates 92–94%, overhead 3.2× | Uncited and simulation-dependent | No performance number ships unmeasured | Phase 4, Task 6 |
+| 8 | Spray copies L=32, "standard is 16" | *L* is a free parameter in the literature, not a constant | L is configurable, default 8, measured | Phase 2 Task 4 (test), Phase 4 Task 4 (sweep) |
+| 9 | Delivery rates 92–94%, overhead 3.2× | Uncited and simulation-dependent | No performance number ships unmeasured | Phase 4, Task 4 |
 | 10 | Purple Guide is "the Event Safety Alliance's"; §4.3 | Published by the **Events Industry Forum**; no §4.3 found | Out of V1 scope; do not reuse this text | n/a |
 
 **The BLE advertisement budget, computed:**
@@ -222,7 +239,9 @@ MeshFrame {
 
   // — mutable, bounds-checked at every hop, NOT signed —
   hop_count:      u8       // reject if > MAX_HOPS (8)
-  copies:         u8       // reject if > SPRAY_L or > previous hop's value
+  copies:         u8       // reject if > SPRAY_L. NOT '> previous hop's value':
+                           // there is no signed hop chain, so the only knowledge
+                           // of the previous value is the field being checked.
 }
 ```
 
@@ -253,11 +272,23 @@ A relay therefore proves *"this frame is internally consistent and untampered"* 
 4. `created_at_ms + ttl_ms > now` (not expired)
 5. `frame_id` not in the seen-set (dedup)
 6. `origin == SHA-256(origin_pubkey)[0..8]`, then `origin_sig` verifies against `origin_pubkey`
-7. **Destination only:** `origin_pubkey` matches a known contact, and `sequence` is greater than the highest seen for that origin within a window of 1024
+7. **Destination only:** `origin_pubkey` matches a known contact, and `sequence` passes the replay window (below)
 
 Signature verification sits at step 6, **after** the cheap checks, so malformed garbage cannot force Ed25519 work on every peer. The ordering is deliberate and is tested directly (Phase 2 with a spy, Phase 8 under flood).
 
-Replay protection lives at step 7 rather than at every hop because per-origin sequence state for strangers is exactly the unbounded memory an attacker would target. Relays deduplicate on `frame_id` alone, which is bounded and expires.
+**Step 5 reads the seen-set; it must not write to it.** A `frame_id` is recorded only **after step 6 passes**. Inserting on first sight would let any device with no key material at all flood random 16-byte ids and evict genuine entries from a bounded ring — turning the replay defence into the memory-exhaustion vector, and re-enabling the routing loops dedup exists to stop.
+
+**Replay window.** Per-origin state is kept only for known contacts, at the destination — tracking sequences for strangers is exactly the unbounded memory an attacker would target. Relays deduplicate on `frame_id` alone, which is bounded and expires.
+
+The window is a **highest-seen value plus a 1024-bit acceptance bitmap**, persisted per contact:
+
+- `sequence > highest` → accept, advance `highest`, shift the bitmap
+- `highest - 1024 < sequence <= highest` → accept **only if** its bitmap bit is unset, then set it
+- `sequence <= highest - 1024` → reject as `replay`
+
+A plain "greater than the highest seen" rule was specified in an earlier draft and is wrong twice over: it contradicts §3.2's requirement to tolerate long-delayed, out-of-order delivery — the property the entire cryptographic choice was made for — and it would drop every legitimately late frame as an attack. A bitmap accepts late frames once and replays never.
+
+This state needs somewhere to live. `contacts` carries `highest_sequence INTEGER` and `replay_bitmap BLOB`; see §7.
 
 ### 6.4 Size buckets
 
@@ -267,7 +298,9 @@ Payloads are padded to the next of 64, 256, 1024, 4096 bytes. Ciphertext length 
 
 256 bits, k = 2, over frame IDs held in the spray queue, carried in the extended advertisement so a scanner can skip a pointless GATT connection.
 
-Hashes are **two independently keyed SipHash-2-4 instances**, keys fixed at compile time and distinct. The PDF's `h1 = digest mod 256` / `h2 = (digest >> 8) mod 256` both read the low 16 bits of one value; they are correlated, so the true false-positive rate is worse than its table claims. The published rates for a correct 256-bit, k=2 filter are 0.56% at 10 messages, 4.37% at 30, 10.46% at 50, 29.39% at 100 — and Phase 4 measures ours against those numbers rather than trusting them.
+Hashes are **two independently keyed SipHash-2-4 instances**, keys fixed at compile time and distinct.
+
+**The plan currently implements seeded FNV-1a instead, and that is a real divergence, not a detail.** FNV is not a keyed PRF, so a seeded pair is not "independently keyed" in the cryptographic sense. Because the digest rides in a public advertisement, an attacker can grind frame ids to force collisions and suppress sync between honest peers — and the chi-squared independence test in Phase 2 would not catch it, because the distribution is fine; it is the *unpredictability* that is missing. Either the plan adopts SipHash-2-4, or this paragraph is downgraded to "two seeded non-cryptographic hashes whose independence is measured" and the adversarial-collision risk is carried in §10. Do not leave spec and plan disagreeing. The PDF's `h1 = digest mod 256` / `h2 = (digest >> 8) mod 256` both read the low 16 bits of one value; they are correlated, so the true false-positive rate is worse than its table claims. The published rates for a correct 256-bit, k=2 filter are 0.56% at 10 messages, 4.37% at 30, 10.46% at 50, 29.39% at 100 — and Phase 4 measures ours against those numbers rather than trusting them.
 
 A match means "this peer **may** hold a frame I need." A miss means "it definitely does not."
 
@@ -286,13 +319,13 @@ SoS epidemic flooding is **not** in V1 — it belongs with the deferred medical 
 
 ## 7. Data model
 
-SQLite via `expo-sqlite`. WatermelonDB was rejected as an unnecessary abstraction over five tables (YAGNI).
+SQLite via `expo-sqlite`. WatermelonDB was rejected as an unnecessary abstraction over six tables (YAGNI).
 
 | Table | Holds | Notes |
 |---|---|---|
 | `identity` | Pickled vodozemac account | One row. Pickle key in Android Keystore |
 | `contacts` | Ed25519 + Curve25519 keys, display name, DeviceId | Signature verified before insert |
-| `sessions` | Pickled Olm sessions, per contact | Ratchet state; corruption here loses history |
+| `sessions` | Pickled Olm sessions, keyed by `session_id` with a `device_id` index | **Not one row per contact.** Olm routinely yields several concurrent sessions for one device — simultaneous initiation, or an inbound pre-key message arriving while an outbound session exists. Keying on `device_id` would let a newer session overwrite an older one, making every frame still in flight under the old ratchet permanently undecryptable: precisely the hours-delayed case §3.2 exists to support. Decrypt by trying each session for the device |
 | `messages` | Plaintext body, direction, state, timestamps | State: queued → sent → delivered → failed |
 | `frames` | Spray queue: frame bytes, copies, expiry | Evicted by TTL and by capacity |
 | `seen_frames` | Frame IDs for dedup, with expiry | Bounded ring, sized in Phase 4 |
@@ -343,12 +376,15 @@ Each phase ends in something visible on a screen. Phases 0–2 need no Bluetooth
 | Android 14+ BLE permission friction | Medium | Medium | Phase 3 handles the full permission matrix explicitly |
 | Two devices cannot prove multi-hop | High | Medium | Simulator proves routing; Phase 4 adds a time-shifted two-device relay test |
 | **Sybil frame injection** — anyone can generate a keypair and emit valid frames | High | Medium | **Accepted, bounded not solved.** `MAX_HOPS`, spray budget, bounded queue, per-peer rate limiting (Phase 8). No signature scheme prevents this in an open mesh; claiming otherwise would be dishonest |
+| **Presence is confirmable by anyone holding a contact bundle** — `origin_pubkey` is a permanent, globally unique, cryptographically verifiable identifier sent in cleartext to every relay | Certain | **High** | **Accepted deliberately**, as the price of self-contained relay verification (§3.3). Bundles are public QR codes, so this is not a hypothetical. Mitigating it means encrypting the pubkey to the destination, which re-breaks relay verification. Must be disclosed to users, and revisited if a rotating-identity design becomes viable |
+| **`hop_count` and `copies` are attacker-controlled at every hop** | High | Medium | Unsigned by necessity — relays must increment them. Bounded by `MAX_HOPS` and `SPRAY_L` only. A hostile relay can extend reach and amplify spray undetectably |
+| Bloom digest hashes are non-cryptographic and the digest is public | Medium | Medium | An attacker can grind frame ids to force collisions and suppress sync. Use SipHash-2-4 with distinct keys, or state the exposure explicitly (§6.5) |
 | UniFFI is MPL-2.0, outside the stated permissive allow-list | Certain | Low | **Decided:** MPL-2.0 is file-level copyleft and does not affect a closed product that merely links it. Added to the `cargo-deny` allow-list with this rationale rather than discovered at CI time |
 | Native Expo modules (`expo-sqlite`, `expo-crypto`) cannot run under jest | Certain | High | Storage and hashing are accessed through injected interfaces so tests run against Node implementations; native modules are used only in production wiring |
 
 ## 11. Audit history
 
-This specification was itself audited on 2026-08-20 by independent reviewers given only the file and told to refute it. The audit found a **design contradiction, not a typo**: §6.3 originally required every hop to verify `origin_sig` against "the known Ed25519 key for `origin`", which is unsatisfiable for a relay carrying a stranger's frame and would have made multi-hop relaying — the entire product — impossible. It would have surfaced in Phase 4, on hardware, after weeks of work.
+This specification was audited on 2026-08-20 by independent reviewers given only the file and told to refute it — first indirectly, while the plans were being audited, and then directly. The first pass found a **design contradiction, not a typo**: §6.3 originally required every hop to verify `origin_sig` against "the known Ed25519 key for `origin`", which is unsatisfiable for a relay carrying a stranger's frame and would have made multi-hop relaying — the entire product — impossible. It would have surfaced in Phase 4, on hardware, after weeks of work.
 
 The fix is the two-level trust model now documented in §6.3: the public key travels inside the signed region, integrity is verified everywhere, authenticity only at the destination.
 

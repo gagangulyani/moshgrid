@@ -46,7 +46,7 @@ All constraints from [`README.md`](README.md#global-constraints). Enforced direc
 | `src/mesh/__tests__/attacks/sybil.test.ts` | Fake identities and impersonation |
 | `src/mesh/__tests__/fuzz/frame.fuzz.test.ts` | Frame parser fuzzing |
 | `modules/.../ble/ChunkerFuzzTest.kt` | GATT reassembly fuzzing |
-| `modules/.../map/MbtilesFuzzTest.kt` | Malformed map pack handling |
+| `src/map/__tests__/pack.fuzz.test.ts` | Malformed map pack handling |
 | `crypto/fuzz/fuzz_targets/decrypt.rs` | `cargo-fuzz` target over Olm decryption |
 | `docs/threat-model.md` | What is defended, what is accepted |
 
@@ -577,7 +577,7 @@ Four parsers read bytes from hostile sources. Each gets a fuzzer.
 **Files:**
 - Create: `src/mesh/__tests__/fuzz/frame.fuzz.test.ts`
 - Create: `modules/.../ble/ChunkerFuzzTest.kt`
-- Create: `modules/.../map/MbtilesFuzzTest.kt`
+- Create: `src/map/__tests__/pack.fuzz.test.ts`
 - Create: `crypto/fuzz/fuzz_targets/decrypt.rs`
 
 - [ ] **Step 1: Frame parser fuzzing**
@@ -611,7 +611,9 @@ test('a structurally valid frame with absurd field values is rejected cleanly', 
 
 - [ ] **Step 2: GATT chunker fuzzing** in Kotlin — random chunk orders, duplicate indices, missing chunks, declared lengths above `MAX_FRAME_BYTES`, and reassemblies abandoned midway. Assert memory returns to baseline after the reassembly timeout. An unfinished reassembly that is never freed is a remote memory leak triggerable by anyone standing near you.
 
-- [ ] **Step 3: MBTiles fuzzing** — truncated files, a valid SQLite database with no `tiles` table, tile blobs that are not image data, and a 2 GB declared tile. The map must show its empty state, never crash the app.
+- [ ] **Step 3: Map pack fuzzing.** After the Phase 7 rewrite there is no Kotlin tile reader to fuzz — MapLibre's own core parses the archive. What remains ours is the **path and install layer**, so fuzz that: relative paths, paths with `..` traversal, absolute paths outside the app sandbox, missing files, a directory where a file is expected, zero-byte files, and a path containing a `file://` or `http://` prefix.
+
+  The property to assert: `packUrl` and `styleWithLocalSource` either return a well-formed local-scheme URL or throw a typed error — never a string that MapLibre will silently treat as remote. A pack path that escapes into an `https://` source is the one failure that looks fine in development and blanks in the field.
 
 - [ ] **Step 4: Olm decryption fuzzing** with `cargo-fuzz`
 

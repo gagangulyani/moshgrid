@@ -92,9 +92,9 @@ Ten defects were verified in the source PDFs on 2026-08-20. Each must end with a
 | # | Defect | Named test | Phase | Done |
 |---|---|---|---|---|
 | 1 | X25519 shared secret claimed 128 bytes; is 32 | `test_x25519_shared_secret_is_32_bytes` | 1 | ☐ |
-| 2 | libsignal AGPL priced as "Free" | `test_no_copyleft_licences_in_tree` | 0 | ☐ |
+| 2 | libsignal AGPL priced as "Free" | `flags AGPL packages` + `cargo deny check licenses` | 0 | ☐ |
 | 3 | Bridgefy blamed on custom crypto; broke again on libsignal | `test_forged_routing_header_is_rejected` | 8 | ☐ |
-| 4 | Bloom hashes read the same low 16 bits | `test_bloom_hashes_are_independent` | 4 | ☐ |
+| 4 | Bloom hashes read the same low 16 bits | `test_bloom_hashes_are_independent` | 2 | ☐ |
 | 5 | 31-byte advert payload is impossible | `test_legacy_advert_fits_in_six_bytes` | 3 | ☐ |
 | 6 | Advertising interval 211 ms is not a real preset | `test_advertise_interval_uses_named_constant` | 3 | ☐ |
 | 7 | Expo wrongly rejected for background BLE | Phase 0 exit gate (module runs on device) | 0 | ☐ |
