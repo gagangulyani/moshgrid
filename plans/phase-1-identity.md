@@ -26,8 +26,11 @@ All constraints from [`README.md`](README.md#global-constraints). Enforced direc
 
 | File | Responsibility |
 |---|---|
+| `src/db/types.ts` | `SqlDb` / `DbOpener` — the driver seam |
 | `src/db/schema.ts` | Table definitions and migrations |
-| `src/db/client.ts` | Connection, migration runner |
+| `src/db/client.ts` | Migration runner, `openDb` (driver-agnostic) |
+| `src/db/index.ts` | The app singleton — the only file naming `expo-sqlite` |
+| `src/test-support/nodeSqlite.ts` | `node:sqlite` adapter, test builds only |
 | `src/db/contacts.ts` | Contact CRUD |
 | `src/db/identity.ts` | Identity load/store |
 | `src/crypto/identity.ts` | Identity creation, pickling |
@@ -44,12 +47,40 @@ All constraints from [`README.md`](README.md#global-constraints). Enforced direc
 ## Task 1: Database schema and migrations
 
 **Files:**
-- Create: `src/db/schema.ts`, `src/db/client.ts`
+- Create: `src/db/types.ts`, `src/db/schema.ts`, `src/db/client.ts`, `src/db/index.ts`, `src/test-support/nodeSqlite.ts`
 - Test: `src/db/__tests__/client.test.ts`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `getDb(): Promise<SQLiteDatabase>`, `runMigrations(db): Promise<number>` returning the resulting schema version. Every later phase adds a migration rather than editing an existing one.
+- Produces: `SqlDb` and `DbOpener` (the seam), `openDb(name, open): SqlDb`, `runMigrations(db): number` returning the resulting schema version, and `getDb(): SqlDb` (the app singleton). All synchronous. Every later phase adds a migration rather than editing an existing one.
+
+### Why the database is injected
+
+`expo-sqlite` resolves through the native module bridge. **There is no bridge in a Node
+test process**, so a test that imports `openDatabaseSync` fails on a missing native
+module before a single assertion runs (`DEFECTS.md` B1). Under the earlier draft, Tasks
+1, 5 and 6 had no executable test suite at all — the plan looked well-tested and was not.
+
+The fix is a seam, not a mock. Migrations and queries are written against a **four-method
+interface** that both drivers satisfy:
+
+| Environment | Driver |
+|---|---|
+| Device / simulator | `expo-sqlite` `openDatabaseSync` |
+| Jest | `node:sqlite` `DatabaseSync`, via a thin adapter |
+
+Both are real SQLite. The tests run the same SQL the phone runs, which is the whole point
+— mocking the database would leave the migrations themselves untested.
+
+**`node:sqlite` is a Node builtin**, so this adds no dependency and nothing for the
+licence gate to discover. Verified on Node v22.22.3: `DatabaseSync`, `exec`, and
+`prepare().run()/.all()/.get()` all work, and `PRAGMA user_version` reads back through
+`prepare(...).get()`. Two things to know:
+
+- It prints `ExperimentalWarning: SQLite is an experimental feature`. Harmless, but
+  expect it in CI output.
+- Rows come back as **null-prototype objects**. `toEqual` ignores the prototype;
+  **`toStrictEqual` does not** and will fail on rows that are otherwise identical.
 
 - [ ] **Step 1: Install**
 
@@ -57,44 +88,129 @@ All constraints from [`README.md`](README.md#global-constraints). Enforced direc
 npx expo install expo-sqlite
 ```
 
-- [ ] **Step 2: Write the failing test**
+Node 22.5+ is required for `node:sqlite`. Pin it in `.nvmrc` and in the CI setup step, or
+the test suite silently becomes unrunnable on a contributor's older Node.
+
+- [ ] **Step 2: Define the seam**
+
+```typescript
+// src/db/types.ts
+/**
+ * The entire surface this project uses. Deliberately tiny: every method here has
+ * to be implemented twice, so each addition costs an adapter change. If a later
+ * phase needs a fifth method, add it here first and to the adapter in the same
+ * commit.
+ */
+export interface SqlDb {
+  execSync(sql: string): void;
+  runSync(sql: string, ...params: unknown[]): void;
+  getFirstSync<T>(sql: string, ...params: unknown[]): T | null;
+  getAllSync<T>(sql: string, ...params: unknown[]): T[];
+}
+
+export type DbOpener = (name: string) => SqlDb;
+```
+
+```typescript
+// src/test-support/nodeSqlite.ts — test builds only, never imported by app code
+import { DatabaseSync } from 'node:sqlite';
+import type { SqlDb } from '../db/types';
+
+/** Adapts node:sqlite to the SqlDb surface. */
+export function openNodeDb(name: string): SqlDb {
+  const db = new DatabaseSync(name);
+  return {
+    execSync: (sql) => db.exec(sql),
+    runSync: (sql, ...params) => {
+      db.prepare(sql).run(...(params as never[]));
+    },
+    getFirstSync: <T,>(sql: string, ...params: unknown[]) =>
+      (db.prepare(sql).get(...(params as never[])) as T | undefined) ?? null,
+    getAllSync: <T,>(sql: string, ...params: unknown[]) =>
+      db.prepare(sql).all(...(params as never[])) as T[],
+  };
+}
+```
+
+The adapter is the one piece of this that exists only for tests, so it is also the one
+piece that can drift from device behaviour without anything noticing. Step 4's first test
+exists specifically to catch that.
+
+- [ ] **Step 3: Write the failing test**
 
 ```typescript
 // src/db/__tests__/client.test.ts
-import { openDatabaseSync } from 'expo-sqlite';
-import { runMigrations, SCHEMA_VERSION } from '../client';
+import { openNodeDb } from '../../test-support/nodeSqlite';
+import { openDb, runMigrations, SCHEMA_VERSION } from '../client';
 
-function freshDb() {
-  return openDatabaseSync(':memory:');
-}
+const freshDb = () => openNodeDb(':memory:');
 
-test('migrations bring a fresh database to the current version', async () => {
+test('the adapter honours the SqlDb contract', () => {
+  // Guards the seam itself. If this drifts, every test below is testing the
+  // adapter rather than the schema, and would keep passing while the app broke.
   const db = freshDb();
-  const version = await runMigrations(db);
-  expect(version).toBe(SCHEMA_VERSION);
+  db.execSync('CREATE TABLE t (a INTEGER, b TEXT)');
+  db.runSync('INSERT INTO t VALUES (?, ?)', 1, 'x');
+  db.runSync('INSERT INTO t VALUES (?, ?)', 2, 'y');
+  expect(db.getAllSync<{ a: number }>('SELECT a FROM t ORDER BY a').map((r) => r.a)).toEqual([1, 2]);
+  expect(db.getFirstSync<{ b: string }>('SELECT b FROM t WHERE a = ?', 2)?.b).toBe('y');
+  expect(db.getFirstSync('SELECT b FROM t WHERE a = ?', 99)).toBeNull();
 });
 
-test('migrations are idempotent', async () => {
+test('migrations bring a fresh database to the current version', () => {
   const db = freshDb();
-  await runMigrations(db);
-  const second = await runMigrations(db);
-  expect(second).toBe(SCHEMA_VERSION);
+  expect(runMigrations(db)).toBe(SCHEMA_VERSION);
 });
 
-test('creates every table the spec requires', async () => {
+test('migrations are idempotent', () => {
   const db = freshDb();
-  await runMigrations(db);
-  const rows = db.getAllSync<{ name: string }>(
-    "SELECT name FROM sqlite_master WHERE type='table'",
-  );
-  const names = rows.map((r) => r.name);
+  runMigrations(db);
+  expect(runMigrations(db)).toBe(SCHEMA_VERSION);
+});
+
+test('the version actually persists in the database, not just in the return value', () => {
+  const db = freshDb();
+  runMigrations(db);
+  expect(db.getFirstSync<{ user_version: number }>('PRAGMA user_version')?.user_version)
+    .toBe(SCHEMA_VERSION);
+});
+
+test('creates every table the spec requires', () => {
+  const db = freshDb();
+  runMigrations(db);
+  const names = db
+    .getAllSync<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table'")
+    .map((r) => r.name);
   for (const table of ['identity', 'contacts', 'sessions', 'messages', 'frames', 'seen_frames']) {
     expect(names).toContain(table);
   }
 });
+
+test('the contacts table carries the replay window columns', () => {
+  // Regression guard for DEFECTS.md B23. The spec named these columns while no
+  // schema declared them, and the gap survived because nothing asserted on it.
+  const db = freshDb();
+  runMigrations(db);
+  const cols = db
+    .getAllSync<{ name: string }>('PRAGMA table_info(contacts)')
+    .map((r) => r.name);
+  expect(cols).toContain('highest_sequence');
+  expect(cols).toContain('replay_bitmap');
+});
+
+test('openDb applies migrations to whatever opener it is given', () => {
+  const db = openDb(':memory:', openNodeDb);
+  expect(db.getFirstSync<{ user_version: number }>('PRAGMA user_version')?.user_version)
+    .toBe(SCHEMA_VERSION);
+});
 ```
 
-- [ ] **Step 3: Run and watch it fail**
+Note the signatures: `runMigrations` and `openDb` are **synchronous**, because every
+method underneath them is. The earlier draft declared them `async` for no reason, and an
+`async` function that never awaits is how a `Promise` ends up compared with `not.toBe` —
+exactly the failure that made the DeviceId tests vacuous (`DEFECTS.md` B3).
+
+- [ ] **Step 4: Run and watch it fail**
 
 ```bash
 npm test -- db/client
@@ -102,7 +218,7 @@ npm test -- db/client
 
 Expected: FAIL — cannot find module `../client`.
 
-- [ ] **Step 4: Implement**
+- [ ] **Step 5: Implement**
 
 ```typescript
 // src/db/schema.ts
@@ -170,43 +286,66 @@ export const SCHEMA_VERSION = MIGRATIONS.length;
 
 ```typescript
 // src/db/client.ts
-import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
+import type { SqlDb, DbOpener } from './types';
 import { MIGRATIONS, SCHEMA_VERSION } from './schema';
 
 export { SCHEMA_VERSION };
+export type { SqlDb, DbOpener };
 
-export async function runMigrations(db: SQLiteDatabase): Promise<number> {
+export function runMigrations(db: SqlDb): number {
   const row = db.getFirstSync<{ user_version: number }>('PRAGMA user_version');
   const current = row?.user_version ?? 0;
 
   for (let i = current; i < MIGRATIONS.length; i++) {
     db.execSync(MIGRATIONS[i]);
   }
+  // Interpolated, not bound: SQLite does not accept a parameter in a PRAGMA.
+  // SCHEMA_VERSION is a derived integer constant, never user input.
   db.execSync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   return SCHEMA_VERSION;
 }
 
-let cached: SQLiteDatabase | null = null;
-
-export async function getDb(): Promise<SQLiteDatabase> {
-  if (cached) return cached;
-  const db = openDatabaseSync('moshgrid.db');
+/** Open and migrate. The opener is a parameter so tests can pass a Node driver. */
+export function openDb(name: string, open: DbOpener): SqlDb {
+  const db = open(name);
   db.execSync('PRAGMA foreign_keys = ON');
-  await runMigrations(db);
-  cached = db;
+  runMigrations(db);
   return db;
 }
 ```
 
+```typescript
+// src/db/index.ts — the only file in the app that names expo-sqlite
+import { openDatabaseSync } from 'expo-sqlite';
+import { openDb, type SqlDb } from './client';
+
+let cached: SqlDb | null = null;
+
+/** App singleton. Tests never call this; they call openDb with their own opener. */
+export function getDb(): SqlDb {
+  if (!cached) cached = openDb('moshgrid.db', (n) => openDatabaseSync(n) as unknown as SqlDb);
+  return cached;
+}
+```
+
+`expo-sqlite` is named in exactly one file. That is what makes the rest of the phase
+testable, and it is also the check to run if the seam ever looks like it is leaking:
+`grep -rl expo-sqlite src/` must print one path.
+
+The `as unknown as SqlDb` cast is deliberate and load-bearing: `SQLiteDatabase` has these
+four methods with compatible shapes but a wider surface and its own generic constraints.
+The cast is safe **only** while `SqlDb` stays a subset of it — which is why Step 3's first
+test asserts the contract rather than trusting the cast.
+
 Migrations are append-only. Editing an existing entry breaks every device that already ran it.
 
-- [ ] **Step 5: Run the tests and watch them pass**
+- [ ] **Step 6: Run the tests and watch them pass**
 
 ```bash
 npm test -- db/client
 ```
 
-Expected: 3 passed.
+Expected: 7 passed.
 
 - [ ] **Step 6: Commit**
 
@@ -400,69 +539,121 @@ Closes defect 1 (X25519 shared secret is 32 bytes, not 128)."
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `deviceIdFromEd25519(base64Key: string): string` — 16 lowercase hex characters (8 bytes).
+- Produces: `deviceIdFromEd25519(base64Key: string): string` — 16 lowercase hex characters (8 bytes). **Synchronous**, and genuinely so.
 
-- [ ] **Step 1: Write the failing test**
+### Why this does not use `expo-crypto`
+
+An earlier draft hashed with `expo-crypto`'s `digestStringAsync`. Two defects came from
+that single choice, and they are worth naming because the second is the more dangerous:
+
+- **`expo-crypto` has no implementation under jest** (`DEFECTS.md` B2). Its functions
+  resolve through the native module bridge, which does not exist in a Node test process.
+  Every test in this task would have failed on a missing native module — or worse,
+  received `undefined` and gone on.
+- **The signature was declared sync and implemented async** (`DEFECTS.md` B3). Callers
+  wrote `deviceIdFromEd25519(k)` and got a `Promise`. The "different keys give different
+  ids" test then compared two *Promise objects* with `not.toBe` — two distinct objects
+  are never `toBe`-equal, so **that test passed no matter what the function returned.**
+  It would have passed against a function returning the empty string.
+
+`@noble/hashes` removes the cause rather than working around it: pure TypeScript, no
+native module, no bridge, and synchronous. It runs identically in jest and on device, so
+the tests exercise the shipping code path instead of a mock of it.
+
+- [ ] **Step 1: Install and re-run the licence gate**
+
+```bash
+npm install @noble/hashes
+npm run check:licences
+```
+
+`@noble/hashes@2.3.0` is **MIT with zero dependencies** — verified against the npm
+registry, not assumed. Zero dependencies matters here: the licence gate has nothing
+transitive to discover later.
+
+Two version-sensitive details, both of which will silently misresolve if ignored:
+
+- **The subpath is `sha2.js`, not `sha256`.** v2 collapsed the per-algorithm entry
+  points; `@noble/hashes/sha256` was the **v1** path and does not exist in v2.
+- The package `exports` map lists subpaths **with the `.js` suffix**, so TypeScript
+  needs `moduleResolution: "bundler"` or `"nodenext"`. Under the legacy `"node"`
+  resolution the import does not type-check.
+
+- [ ] **Step 2: Write the failing test**
 
 ```typescript
 // src/crypto/__tests__/deviceId.test.ts
 import { deviceIdFromEd25519 } from '../deviceId';
 
-test('device id is 16 hex characters', () => {
-  const id = deviceIdFromEd25519('aGVsbG8gd29ybGQgdGhpcyBpcyBhIGtleSBmb3IgdGVzdA');
-  expect(id).toMatch(/^[0-9a-f]{16}$/);
+// Known-answer vectors, computed independently with a reference SHA-256
+// implementation. These pin the whole definition — UTF-8 bytes of the base64
+// *text*, SHA-256, first 8 bytes as lowercase hex — so a change to any part of
+// it fails here rather than surfacing as undecodable frames in the field.
+const KEY_A = 'aGVsbG8gd29ybGQgdGhpcyBpcyBhIGtleSBmb3IgdGVzdA';
+const KEY_B = 'c29tZXRoaW5nIGVudGlyZWx5IGRpZmZlcmVudCBoZXJlIQ';
+
+test('device id is the first 8 bytes of SHA-256, as hex', () => {
+  expect(deviceIdFromEd25519(KEY_A)).toBe('7b293268af7035ea');
+  expect(deviceIdFromEd25519(KEY_B)).toBe('363efc823c1923f0');
+});
+
+test('device id is 16 lowercase hex characters', () => {
+  expect(deviceIdFromEd25519(KEY_A)).toMatch(/^[0-9a-f]{16}$/);
 });
 
 test('device id is deterministic', () => {
-  const key = 'aGVsbG8gd29ybGQgdGhpcyBpcyBhIGtleSBmb3IgdGVzdA';
-  expect(deviceIdFromEd25519(key)).toBe(deviceIdFromEd25519(key));
+  expect(deviceIdFromEd25519(KEY_A)).toBe(deviceIdFromEd25519(KEY_A));
+});
+
+test('the return value is a string, not a Promise', () => {
+  // Regression guard for DEFECTS.md B3. Without this, an async implementation
+  // makes every `not.toBe` comparison below pass vacuously.
+  expect(typeof deviceIdFromEd25519(KEY_A)).toBe('string');
 });
 
 test('different keys give different device ids', () => {
-  const a = deviceIdFromEd25519('aGVsbG8gd29ybGQgdGhpcyBpcyBhIGtleSBmb3IgdGVzdA');
-  const b = deviceIdFromEd25519('c29tZXRoaW5nIGVudGlyZWx5IGRpZmZlcmVudCBoZXJlIQ');
-  expect(a).not.toBe(b);
+  expect(deviceIdFromEd25519(KEY_A)).not.toBe(deviceIdFromEd25519(KEY_B));
 });
 ```
 
-- [ ] **Step 2: Run and watch it fail**
+- [ ] **Step 3: Run and watch it fail**
 
 ```bash
 npm test -- deviceId
 ```
 
-Expected: FAIL — module not found.
+Expected: FAIL — cannot find module `../deviceId`.
 
-- [ ] **Step 3: Implement**
-
-```bash
-npx expo install expo-crypto
-```
+- [ ] **Step 4: Implement**
 
 ```typescript
 // src/crypto/deviceId.ts
-import { digestStringAsync, CryptoDigestAlgorithm, CryptoEncoding } from 'expo-crypto';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 export const DEVICE_ID_BYTES = 8;
 
 /** First 8 bytes of SHA-256 over the base64 Ed25519 public key, as hex. */
-export async function deviceIdFromEd25519(base64Key: string): Promise<string> {
-  const hex = await digestStringAsync(CryptoDigestAlgorithm.SHA256, base64Key, {
-    encoding: CryptoEncoding.HEX,
-  });
-  return hex.slice(0, DEVICE_ID_BYTES * 2);
+export function deviceIdFromEd25519(base64Key: string): string {
+  // Hash the base64 *text*, not the decoded key bytes. Both are defensible; only
+  // one can be right, and every peer must make the same choice. The known-answer
+  // vectors in the test are what actually pins it.
+  const digest = sha256(new TextEncoder().encode(base64Key));
+  return bytesToHex(digest.subarray(0, DEVICE_ID_BYTES));
 }
 ```
 
 Truncation is for the wire only. Verification always uses the full key — never the DeviceId.
 
-- [ ] **Step 4: Run and watch it pass**
+- [ ] **Step 5: Run and watch it pass**
 
 ```bash
 npm test -- deviceId
 ```
 
-- [ ] **Step 5: Commit**
+Expected: 5 passed.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "feat: derive device id from ed25519 key"
@@ -712,7 +903,7 @@ npm test -- crypto/identity
 import { createAccount, unpickleAccount, pickleKey } from '../../modules/moshgrid-core';
 // createAccount/unpickleAccount/pickleKey are thin TS wrappers added in Task 0 below —
 // they map to MoshgridAccount(), MoshgridAccount.unpickle() and the Keystore bridge.
-import { getDb } from '../db/client';
+import { getDb } from '../db';
 import { deviceIdFromEd25519 } from './deviceId';
 import { signableBytes, BUNDLE_VERSION, type ContactBundle } from './bundle';
 
@@ -723,7 +914,7 @@ export type Identity = {
 };
 
 async function currentAccount() {
-  const db = await getDb();
+  const db = getDb();
   const key = await pickleKey();
   const row = db.getFirstSync<{ pickle: string }>('SELECT pickle FROM identity WHERE id = 1');
 
@@ -731,7 +922,7 @@ async function currentAccount() {
 
   const account = createAccount();
   const keys = account.identityKeys();
-  const deviceId = await deviceIdFromEd25519(keys.ed25519);
+  const deviceId = deviceIdFromEd25519(keys.ed25519);
 
   db.runSync(
     `INSERT INTO identity (id, pickle, device_id, ed25519_pub, curve25519_pub, created_at)
@@ -745,7 +936,7 @@ export async function loadOrCreateIdentity(): Promise<Identity> {
   const { account } = await currentAccount();
   const keys = account.identityKeys();
   return {
-    deviceId: await deviceIdFromEd25519(keys.ed25519),
+    deviceId: deviceIdFromEd25519(keys.ed25519),
     ed25519Pub: keys.ed25519,
     curve25519Pub: keys.curve25519,
   };
@@ -843,7 +1034,7 @@ npm test -- db/contacts
 
 ```typescript
 // src/db/contacts.ts
-import { getDb } from './client';
+import { getDb } from './index';
 import { verifyBundle, type ContactBundle } from '../crypto/bundle';
 import { deviceIdFromEd25519 } from '../crypto/deviceId';
 
@@ -860,8 +1051,8 @@ export async function addContactFromBundle(bundle: ContactBundle): Promise<Conta
     throw new Error('bundle signature is invalid — contact not added');
   }
 
-  const deviceId = await deviceIdFromEd25519(bundle.ed25519Pub);
-  const db = await getDb();
+  const deviceId = deviceIdFromEd25519(bundle.ed25519Pub);
+  const db = getDb();
   const addedAt = Date.now();
 
   db.runSync(
@@ -883,7 +1074,7 @@ export async function addContactFromBundle(bundle: ContactBundle): Promise<Conta
 }
 
 export async function listContacts(): Promise<Contact[]> {
-  const db = await getDb();
+  const db = getDb();
   return db.getAllSync<Contact>(
     `SELECT device_id AS deviceId, ed25519_pub AS ed25519Pub,
             curve25519_pub AS curve25519Pub, display_name AS displayName,
@@ -893,7 +1084,7 @@ export async function listContacts(): Promise<Contact[]> {
 }
 
 export async function getContact(deviceId: string): Promise<Contact | null> {
-  const db = await getDb();
+  const db = getDb();
   return db.getFirstSync<Contact>(
     `SELECT device_id AS deviceId, ed25519_pub AS ed25519Pub,
             curve25519_pub AS curve25519Pub, display_name AS displayName,
@@ -1122,6 +1313,9 @@ git add -A && git commit -m "feat: add identity, scan, and contacts screens"
 
 - [ ] `npm run lint` → exit 0
 - [ ] `npm test` → all pass, including `addContactFromBundle` rejection test
+- [ ] `npm test -- db/client` → 7 passed, including the adapter-contract test and the replay-column guard
+- [ ] `npm test -- deviceId` → 5 passed, including the known-answer vectors
+- [ ] `grep -rl expo-sqlite src/` prints exactly one path (`src/db/index.ts`) — the seam has not leaked
 - [ ] `cargo test --manifest-path crypto/Cargo.toml` → includes `test_x25519_shared_secret_is_32_bytes` passing
 - [ ] `npm run check:licences` → exit 0
 - [ ] `npx maestro test .maestro/add-contact.yaml` → pass
@@ -1134,6 +1328,7 @@ git add -A && git commit -m "feat: add identity, scan, and contacts screens"
 - [ ] Verify a tampered bundle is genuinely refused: in a REPL, take a valid bundle, change one character of `displayName`, and confirm `addContactFromBundle` throws and adds no row.
 - [ ] Confirm the pickle key is not on disk in plaintext: `adb shell run-as com.moshgrid.app cat databases/moshgrid.db | strings | head -50` — the raw key bytes must not appear.
 - [ ] Confirm re-pickling after one-time key generation works: create a bundle, restart the app, create another bundle, and confirm both one-time keys differ.
+- [ ] **Confirm the seam agrees with the device.** The suite proves the SQL is right under `node:sqlite`; it does not prove `expo-sqlite` behaves identically. Once on the phone, read `PRAGMA user_version` and `PRAGMA table_info(contacts)` from the real database and confirm they match what the tests assert. Do this once per migration added, not once ever.
 
 ## Updating the index
 

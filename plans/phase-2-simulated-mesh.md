@@ -989,7 +989,7 @@ cd crypto && cargo test && ./../scripts/build-crypto-android.sh
 
 ```typescript
 // src/crypto/session.ts
-import { getDb } from '../db/client';
+import { getDb } from '../db';
 import { getContact } from '../db/contacts';
 import { pickleKey, unpickleSession, accountCreateOutbound, accountCreateInbound } from '../../modules/moshgrid-core';
 import type { DeviceId } from '../mesh/types';
@@ -997,7 +997,7 @@ import type { DeviceId } from '../mesh/types';
 export type OlmMessage = { messageType: number; ciphertext: string };
 
 async function loadSession(deviceId: DeviceId) {
-  const db = await getDb();
+  const db = getDb();
   const row = db.getFirstSync<{ pickle: string }>(
     'SELECT pickle FROM sessions WHERE device_id = ?', deviceId,
   );
@@ -1005,7 +1005,7 @@ async function loadSession(deviceId: DeviceId) {
 }
 
 async function saveSession(deviceId: DeviceId, session: { pickle: (k: Uint8Array) => string }) {
-  const db = await getDb();
+  const db = getDb();
   db.runSync(
     `INSERT INTO sessions (device_id, pickle, updated_at) VALUES (?, ?, ?)
      ON CONFLICT(device_id) DO UPDATE SET pickle = excluded.pickle, updated_at = excluded.updated_at`,

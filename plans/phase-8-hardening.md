@@ -214,7 +214,7 @@ export class MaliciousLink extends FakeLink {
   async forgeAsNewIdentity(overrides: Partial<MeshFrame>): Promise<Uint8Array> {
     const account = createAccount();
     const pubkey = account.identityKeys().ed25519;
-    const origin = overrides.origin ?? (await deviceIdFromEd25519(pubkey));
+    const origin = overrides.origin ?? deviceIdFromEd25519(pubkey);
 
     const base = await buildFrame({
       origin,
