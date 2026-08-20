@@ -4,7 +4,23 @@
 
 **Goal:** the phone stays in the mesh with the screen off and the app closed, and you know the real battery cost because you measured it.
 
-**Architecture:** a `ForegroundService` owning the BLE stack, plus `PendingIntent`-based scanning that runs inside the Android Bluetooth process and survives Doze. The engine and UI are unchanged.
+**Architecture:** a `ForegroundService` owning the BLE stack, plus `PendingIntent`-based scanning registered inside the Android Bluetooth process. The engine and UI are unchanged.
+
+## What actually survives Doze — read this before designing anything here
+
+An earlier draft of this phase claimed the design "survives Doze" and built a wake window on a `PARTIAL_WAKE_LOCK`. Both were wrong, and wrong in the direction that flatters the product:
+
+- **Doze ignores wake locks.** Android's documentation lists it among Doze's restrictions verbatim. A design whose wake window depends on one has no wake window.
+- **Android 12+ blocks starting a foreground service from the background.** Receiving a BLE scan `PendingIntent` is not among the exemptions, so the receiver cannot escalate into an FGS to do its work.
+
+What is true is narrower and still useful: **the scan registration survives Doze; the app's ability to act on a result does not** — unless the user has granted the battery-optimisation exemption, which is exemption 13 on Android's list.
+
+Two consequences that shape the whole phase:
+
+1. **Task 4 (the exemption) is a prerequisite of Task 3, not a follow-up.** Without it, background delivery is best-effort at maintenance windows.
+2. **Google Play policy restricts requesting that exemption directly** — "unless the core function of the app is adversely affected." A festival safety mesh is a defensible case, but the justification has to be written before submission, not after rejection.
+
+The honest product claim is therefore: *messages arrive promptly in the background on devices where the user granted the exemption, and at maintenance windows otherwise.* Anything stronger is marketing the platform does not support.
 
 **Tech Stack:** Kotlin (`ForegroundService`, `PendingIntent` scan, `BroadcastReceiver`, WakeLock), `dumpsys batterystats`.
 
@@ -22,7 +38,7 @@ This is the difference between a demo and a product. A mesh that only relays whi
 
 All from [`README.md`](README.md#global-constraints). Enforced here:
 
-- **No performance number ships unmeasured.** Every battery figure comes from `dumpsys batterystats`.
+- **No performance number ships unmeasured.** Every battery figure comes from `dumpsys batterystats`, recorded with its command — and labelled as the **model-derived estimate** it is, not as metered power.
 - `ADVERTISE_MODE_BALANCED` is 250 ms; low-power mode uses the 1000 ms constant.
 
 ## File structure
@@ -60,12 +76,16 @@ All from [`README.md`](README.md#global-constraints). Enforced here:
 @Test fun `every mode maps to a named constant, never a literal`() {
     for (mode in PowerMode.values()) {
         val s = PowerPolicy.forMode(mode, screenOn = false)
-        assertTrue(s.advertiseIntervalMs in listOf(100, 250, 1000))
+        assertTrue(s.advertiseIntervalMs in listOf(
+            BleConstants.ADVERTISE_INTERVAL_LOW_LATENCY_MS,
+            BleConstants.ADVERTISE_INTERVAL_BALANCED_MS,
+            BleConstants.ADVERTISE_INTERVAL_LOW_POWER_MS,
+        ))
     }
 }
 ```
 
-The last test is the structural guard for defect 6 — it makes an invented interval like 211 ms fail the build rather than ship.
+The last test is the structural guard for defect 6. Note it must run over **both** `screenOn` values — an earlier draft tested only `screenOn = false`, leaving the screen-on branch free to ship an invented interval. Asserting against the named constants rather than the literals `100, 250, 1000` matters too: literals in the test would be the same magic numbers the global constraint bans.
 
 - [ ] **Step 2: Implement** four modes: `ULTRA_POWER_SAVE`, `POWER_SAVE`, `STANDARD`, `ALL_IN`. Keeping this pure means the whole battery strategy is unit-testable with no device.
 
@@ -92,7 +112,9 @@ The last test is the structural guard for defect 6 — it makes an invented inte
 
 ## Task 3: PendingIntent scanning
 
-The mechanism that makes Android work where iOS cannot: the scan runs inside the Bluetooth stack, not the app process, and delivers results through a `BroadcastReceiver` even in Doze.
+The mechanism that makes Android work where iOS cannot: the scan **registration** lives in the Bluetooth stack rather than the app process, so it outlives the process and is delivered through a manifest-declared `BroadcastReceiver`. What the app may then *do* with a result is constrained by Doze — see the Doze section above.
+
+Three details that silently produce zero results if missed: the `PendingIntent` must wrap an **explicit** Intent, it must be **`FLAG_MUTABLE`** on Android 12+ (the system fills in the scan results), and registrations do **not** survive a reboot or a Bluetooth adapter off/on cycle.
 
 **Files:**
 - Create: `service/ScanReceiver.kt`
@@ -100,14 +122,22 @@ The mechanism that makes Android work where iOS cannot: the scan runs inside the
 
 - [ ] **Step 1: Implement** `startScan(filters, settings, pendingIntent)`. Register the receiver in the manifest, not at runtime — a runtime registration dies with the process, which defeats the purpose.
 
-- [ ] **Step 2: Handle the wake window** — on a scan result, acquire a `PARTIAL_WAKE_LOCK`, sync for up to 30 seconds, release. **Always release in a `finally`.** A leaked wake lock is the single fastest way to destroy battery life and it will not show up in a short test.
+- [ ] **Step 2: Handle the wake window.** Doze ignores wake locks, so pick a path explicitly and record which, per Android version:
+  - **Exempt from battery optimisation:** start the foreground service and sync normally. This is the only path with a real 30-second window.
+  - **Not exempt, Android 12+:** `goAsync()` inside the receiver, which carries a hard budget of roughly 10 seconds — not 30 — or hand off to an expedited `WorkManager` job.
+  - Never rely on a `PARTIAL_WAKE_LOCK` for the window. If one is taken for other reasons, **always release it in a `finally`**; a leaked wake lock destroys battery life and will not show up in a short test.
 
 - [ ] **Step 3: Verify under Doze**
 
 ```bash
+adb shell dumpsys battery unplug          # required: force-idle no-ops while charging
+adb shell dumpsys deviceidle enable       # some devices ship with it disabled
+# turn the screen off
 adb shell dumpsys deviceidle force-idle
-# wait, send a message from the other phone
+adb shell dumpsys deviceidle | grep mState    # expect mState=IDLE — verify, never assume
+# ... send a message from the other phone ...
 adb shell dumpsys deviceidle unforce
+adb shell dumpsys battery reset           # omitting this corrupts the Task 5 measurements
 ```
 
 Expected: the message arrives while the device is idle, or immediately on the next maintenance window. Record which.
@@ -150,7 +180,11 @@ Parse the app's mAh, convert to percent per hour against the battery's design ca
 
 - [ ] **Step 2: Measure each mode for at least two hours**, screen off, both phones in range so the mesh is actually doing work. A measurement with no peers present measures nothing.
 
-- [ ] **Step 3: Record every mode in the ledger.** If `STANDARD` exceeds roughly 7%/hour, tune the duty cycle before Phase 6 — Phase 6 adds GPS, which only makes it worse.
+- [ ] **Step 3: Record every mode in the ledger** with the command that produced it.
+
+  Do **not** set an absolute threshold. An earlier draft said "if `STANDARD` exceeds roughly 7%/hour, tune" — reintroducing the same unmeasured 7%/hour figure this phase opens by condemning the source PDF for asserting. The exit criterion is that a number exists, is reproducible, and is no worse than the previous phase's baseline.
+
+  Note also that `dumpsys batterystats` reports a **model-derived estimate** from `power_profile.xml`, not a measurement. Say so in the ledger rather than presenting it as metered truth.
 
 - [ ] **Step 4: Commit**
 
@@ -169,7 +203,7 @@ Parse the app's mAh, convert to percent per hour against the battery's design ca
 
 - [ ] Re-run Phases 0–4 exit gates. All green.
 - [ ] **Seam check:** no changes under `src/app/` beyond `settings.tsx` and Diagnostics rows.
-- [ ] Reboot the phone. Confirm the service does **not** auto-start — starting on boot without the user asking is how an app gets uninstalled. It should start when the app is next opened.
+- [ ] Reboot the phone. Confirm the service **restores whatever the user last chose**: mesh was on before the reboot → it comes back on; mesh was off → it stays off. Restoring a setting the user chose is not "starting without being asked"; silently dropping it is. A rebooted phone with no service and no scan registration is a dead node until someone unlocks it, which at a festival is the failure case. `ACTION_BOOT_COMPLETED` is an explicit exemption from the background-FGS-start restriction, and Android 15's BOOT_COMPLETED bans do not cover `connectedDevice`.
 - [ ] Leave both phones idle overnight with the app closed. In the morning: service still running, battery drain within the measured figure, messages sent late at night delivered.
 - [ ] Check for wake-lock leaks: `adb shell dumpsys power | grep -i wake` → no MoshGrid lock held while idle.
 

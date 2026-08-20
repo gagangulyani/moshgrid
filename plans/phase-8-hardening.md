@@ -62,7 +62,22 @@ Every later task uses this. It is a `Link` implementation that lies.
 
 **Interfaces:**
 - Consumes: `Link` from Phase 2, `FakeBus` and `Sim` from Phase 2 Task 6.
-- Produces: `class MaliciousLink implements Link` with `forgeFrame(overrides)`, `replayLast(times)`, `truncateNext(bytes)`, `floodQueue(count)`, `impersonate(deviceId)`.
+- Produces: `class MaliciousLink implements Link` with `forgeFrame(overrides)`, `forgeAsNewIdentity(overrides)`, `replayLast(times)`, `truncateNext(bytes)`, `floodQueue(count)`, `impersonate(deviceId)`.
+- Also produces two deterministic test helpers used by the class, defined at the top of the same file:
+
+```typescript
+/** 32 zero bytes, base64 — a well-formed key that belongs to nobody. */
+export const FAKE_PUBKEY_B64 = 'A'.repeat(43);
+
+let fakeUuidCounter = 0;
+/** Deterministic frame ids so an attack that fails can be replayed exactly. */
+export function nextFakeUuid(): string {
+  const n = (fakeUuidCounter++).toString(16).padStart(12, '0');
+  return `00000000-0000-4000-8000-${n}`;
+}
+```
+
+`forgeFrame` and `forgeAsNewIdentity` test **different** attacks and both are needed. The first sends a frame whose signature is wrong — tampering, caught at every hop. The second sends a cryptographically valid frame from a keypair nobody knows — the Sybil case, which must relay everywhere and be refused only at the destination. Conflating them is how a test suite ends up asserting the bug rather than the fix.
 
 - [ ] **Step 1: Write the failing tests for the harness itself**
 
@@ -166,18 +181,53 @@ export class MaliciousLink extends FakeLink {
 
   onSend(spy: SendSpy): void { this.spies.push(spy); }
 
-  /** Build a frame with arbitrary fields and a signature that will not verify. */
+  /**
+   * Build a frame with arbitrary fields and a signature that will not verify.
+   * Used to test that tampering is caught — see forgeAsNewIdentity for the
+   * "valid frame from a stranger" case, which is a different attack.
+   */
   async forgeFrame(overrides: Partial<MeshFrame>): Promise<Uint8Array> {
     const base = await buildFrame({
       origin: overrides.origin ?? 'f'.repeat(16),
+      originPubkey: overrides.originPubkey ?? FAKE_PUBKEY_B64,
       destination: overrides.destination ?? 'f'.repeat(16),
       payload: overrides.payload ?? new Uint8Array([0xde, 0xad]),
       sequence: overrides.sequence ?? 1,
       ttlMs: overrides.ttlMs ?? 60_000,
       sprayL: overrides.copies ?? 8,
-      signFn: async () => 'AAAA'.repeat(22),   // structurally valid, cryptographically wrong
+      // 64 bytes base64-encodes to 88 chars: structurally valid, cryptographically wrong.
+      signFn: async () => 'A'.repeat(88),
+      idFn: () => nextFakeUuid(),
     });
-    return encodeFrame({ ...base, ...overrides });
+    // payload is restored from `base` deliberately: buildFrame ran it through
+    // padToBucket, and letting an override replace it would silently defeat
+    // the size-bucket padding the frame format depends on.
+    return encodeFrame({ ...base, ...overrides, payload: base.payload });
+  }
+
+  /**
+   * Build a *correctly signed* frame from a freshly generated keypair — a
+   * stranger who is cryptographically honest but socially unknown. This is
+   * the Sybil case: it must relay everywhere and be refused only at the
+   * destination.
+   */
+  async forgeAsNewIdentity(overrides: Partial<MeshFrame>): Promise<Uint8Array> {
+    const account = createAccount();
+    const pubkey = account.identityKeys().ed25519;
+    const origin = overrides.origin ?? (await deviceIdFromEd25519(pubkey));
+
+    const base = await buildFrame({
+      origin,
+      originPubkey: pubkey,
+      destination: overrides.destination ?? 'f'.repeat(16),
+      payload: overrides.payload ?? new Uint8Array([0xbe, 0xef]),
+      sequence: overrides.sequence ?? 1,
+      ttlMs: overrides.ttlMs ?? 60_000,
+      sprayL: 8,
+      signFn: async (bytes) => account.sign(bytes),
+      idFn: () => nextFakeUuid(),
+    });
+    return encodeFrame({ ...base, ...overrides, payload: base.payload });
   }
 
   truncateNext(bytes: number): void { this.truncateTo = bytes; }
@@ -293,15 +343,46 @@ test('a forged frame increments the bad_signature drop counter', async () => {
   expect(drops.bad_signature ?? 0).toBeGreaterThan(0);
 });
 
-test('a frame from an entirely unknown origin is dropped', async () => {
+test('a frame from an unknown origin is RELAYED but never delivered', async () => {
+  // This is the two-level trust model from docs/design.md §6.3, asserted.
+  //
+  // A relay must forward frames from people it has never met — that is the
+  // entire point of a mesh, and an earlier draft of the spec got this wrong
+  // by requiring signature verification against a known key at every hop,
+  // which would have made relaying impossible.
+  //
+  // So: a well-formed frame from a stranger passes integrity everywhere and
+  // is relayed, but is refused at the destination for lack of a contact.
   const { bob, eve } = await scene();
   const received: unknown[] = [];
+  let drops: Record<string, number> = {};
   bob.observeMessages((e) => received.push(e));
+  bob.observeDiagnostics((d) => { drops = d.framesDropped; });
 
-  await eve.sendTo(BOB, await eve.forgeFrame({ origin: 'z'.repeat(16), destination: BOB }));
+  // A genuine keypair Bob has never seen — correctly self-signed.
+  const stranger = await eve.forgeAsNewIdentity({ destination: BOB });
+  await eve.sendTo(BOB, stranger);
   await new Promise((r) => setTimeout(r, 1000));
 
   expect(received).toEqual([]);
+  expect(drops.unknown_contact ?? 0).toBeGreaterThan(0);
+  expect(drops.bad_signature ?? 0).toBe(0);   // integrity was fine; identity was not
+});
+
+test('a frame whose origin id does not match its public key is dropped at every hop', async () => {
+  // Binding origin to SHA-256(originPubkey) is what stops a valid keypair
+  // being used to impersonate someone else's DeviceId.
+  const { bob, eve } = await scene();
+  let drops: Record<string, number> = {};
+  bob.observeDiagnostics((d) => { drops = d.framesDropped; });
+
+  await eve.sendTo(BOB, await eve.forgeAsNewIdentity({
+    origin: ALICE,          // claim Alice's id, sign with our own key
+    destination: BOB,
+  }));
+  await new Promise((r) => setTimeout(r, 1000));
+
+  expect(drops.id_key_mismatch ?? 0).toBeGreaterThan(0);
 });
 
 test('tampering with the destination after signing is detected', async () => {

@@ -380,16 +380,22 @@ export function signableFrameBytes(f: MeshFrame): Uint8Array {
 }
 
 export async function buildFrame(args: {
-  origin: DeviceId; destination: DeviceId; payload: Uint8Array;
+  origin: DeviceId;
+  /** Base64 Ed25519 public key of the origin. Travels in the signed region. */
+  originPubkey: string;
+  destination: DeviceId; payload: Uint8Array;
   sequence: number; ttlMs: number; sprayL: number;
   frameType?: FrameType;
   signFn?: (bytes: Uint8Array) => Promise<string>;
+  /** Injected so tests need no native module. Defaults to expo-crypto. */
+  idFn?: () => string;
 }): Promise<MeshFrame> {
   const frame: MeshFrame = {
     version: FRAME_VERSION,
     frameType: args.frameType ?? 1,
-    frameId: randomUUID().replace(/-/g, ''),
+    frameId: (args.idFn ?? randomUUID)().replace(/-/g, ''),
     origin: args.origin,
+    originPubkey: args.originPubkey,
     destination: args.destination,
     createdAtMs: Date.now(),
     ttlMs: args.ttlMs,
@@ -403,9 +409,16 @@ export async function buildFrame(args: {
   return frame;
 }
 
+// FRAME_FIELD_COUNT is asserted in a test. If you add a field, both the encoder
+// and the decoder change together or frames silently lose data on the wire —
+// which is exactly how `originPubkey` was once added to the type, to the
+// signature, and to nothing else, leaving every relayed frame to die at
+// `id_key_mismatch` with no clue why.
+export const FRAME_FIELD_COUNT = 13;
+
 export function encodeFrame(f: MeshFrame): Uint8Array {
   return cborEncode([
-    f.version, f.frameType, f.frameId, f.origin, f.destination,
+    f.version, f.frameType, f.frameId, f.origin, f.originPubkey, f.destination,
     f.createdAtMs, f.ttlMs, f.sequence, f.payload, f.originSig,
     f.hopCount, f.copies,
   ]);
@@ -413,11 +426,13 @@ export function encodeFrame(f: MeshFrame): Uint8Array {
 
 export function decodeFrame(bytes: Uint8Array): MeshFrame {
   const p = cborDecode(bytes);
-  if (!Array.isArray(p) || p.length !== 12) throw new Error('frame has the wrong shape');
+  if (!Array.isArray(p) || p.length !== FRAME_FIELD_COUNT) {
+    throw new Error(`frame has the wrong shape: ${Array.isArray(p) ? p.length : typeof p} fields, expected ${FRAME_FIELD_COUNT}`);
+  }
   return {
-    version: p[0], frameType: p[1], frameId: p[2], origin: p[3], destination: p[4],
-    createdAtMs: p[5], ttlMs: p[6], sequence: p[7], payload: p[8], originSig: p[9],
-    hopCount: p[10], copies: p[11],
+    version: p[0], frameType: p[1], frameId: p[2], origin: p[3], originPubkey: p[4],
+    destination: p[5], createdAtMs: p[6], ttlMs: p[7], sequence: p[8], payload: p[9],
+    originSig: p[10], hopCount: p[11], copies: p[12],
   };
 }
 

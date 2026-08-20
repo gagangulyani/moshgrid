@@ -21,7 +21,7 @@ All constraints from [`README.md`](README.md#global-constraints). Enforced direc
 - **Legacy BLE advert carries 6 usable bytes.** Presence beacon only (defect 5).
 - **`ADVERTISE_MODE_BALANCED` is 250 ms.** Named constants only, never magic numbers (defect 6).
 - **Extended advertising is queried at runtime**, never assumed.
-- **Only `src/mesh/index.ts` changes in the TypeScript layer.** Anything under `src/app/` is off limits.
+- **No product UI changes.** `src/app/diagnostics.tsx` is the one exception — every phase adds rows to it, and it is excluded from the seam check for that reason. Chat, contacts and radar screens are off limits.
 
 ## File structure
 
@@ -135,7 +135,11 @@ object BleConstants {
     val FRAME_CHARACTERISTIC: UUID = UUID.fromString("6d6f7368-6772-4964-9a01-000000000002")
     val DIGEST_CHARACTERISTIC: UUID = UUID.fromString("6d6f7368-6772-4964-9a01-000000000003")
 
-    const val MANUFACTURER_ID = 0xFFFF   // 0xFFFF is reserved for testing
+    // TEST ONLY. The Bluetooth SIG states 0xFFFF "shall not be used in shipping
+    // end products" — it exists for interoperability testing before a Company ID
+    // is assigned. Replace with an assigned Company ID (free Adopter membership)
+    // before any public release. Phase 8 asserts MANUFACTURER_ID != 0xFFFF.
+    const val MANUFACTURER_ID = 0xFFFF
 
     // Legacy advertisement budget — see docs/design.md §4, defect 5.
     const val LEGACY_TOTAL_BYTES = 31
@@ -227,7 +231,7 @@ test('Android 12+ needs the split bluetooth permissions', () => {
   expect(perms).toContain('android.permission.BLUETOOTH_CONNECT');
 });
 
-test('Android 11 and below need location instead', () => {
+test('Android 11 and below use location without the split permissions', () => {
   const perms = requiredBlePermissions(30);
   expect(perms).toContain('android.permission.ACCESS_FINE_LOCATION');
   expect(perms).not.toContain('android.permission.BLUETOOTH_SCAN');
@@ -330,7 +334,9 @@ The last two matter for safety: without them a hostile peer pins memory by start
 
 - [ ] **Step 2: Implement chunking** with a 4-byte header per chunk: 2-byte total length, 1-byte chunk index, 1-byte chunk count. Reassembly buffers are keyed by peer and expire after 30 seconds.
 
-- [ ] **Step 3: Implement the GATT server** — one service, a write-without-response frame characteristic, and a readable digest characteristic. Request MTU 517 on connect and **use whatever is actually granted**, never the requested value.
+- [ ] **Step 3: Implement the GATT server** — one service, a write-without-response frame characteristic, and a readable digest characteristic. The server **cannot** request an MTU: `requestMtu()` exists only on `BluetoothGatt` (the client). The server observes `onMtuChanged` and caps every write at `mtu - 3`.
+
+  On Android 14+ the stack requests 517 on the first GATT client MTU request and **ignores all later ones**, so the value you are granted may have been set by an unrelated app. Always read it, never assume it.
 
 - [ ] **Step 4: Implement the GATT client** — connect, discover services, negotiate MTU, write chunks, disconnect. Serialise connections; Android's BLE stack handles roughly 4–7 concurrent GATT connections and degrades badly past that.
 
@@ -408,7 +414,7 @@ npm run harness:throughput
 ## Re-check before moving on
 
 - [ ] Re-run Phases 0–2 exit gates. All still green.
-- [ ] **Seam check:** `git diff --stat <phase-2-tag>..HEAD -- src/app/` → **empty**. Any change here means the interface was wrong.
+- [ ] **Seam check:** `git diff --stat <phase-2-tag>..HEAD -- src/app/ ':!src/app/diagnostics.tsx'` → **empty**. Any change here means the interface was wrong.
 - [ ] Test on both phones with the roles swapped — whichever advertises first must not matter.
 - [ ] Turn Bluetooth off on one phone mid-session. The other must show the peer going stale, not crash.
 - [ ] Check `adb logcat | grep -i "ADVERTISE_FAILED"` → no occurrences.

@@ -125,13 +125,21 @@ Closes defects 8 and 9.
 
 - [ ] **Step 1: Write the sweep**
 
-Simulate a festival-shaped crowd: 50 virtual devices, random-waypoint movement, 50 m range, 20% loss. Sweep `L ∈ {1, 2, 4, 8, 16, 32}`. For each, report delivery rate, median latency, and overhead ratio (total transmissions ÷ messages delivered).
+Simulate a festival-shaped crowd: 50 virtual devices, random-waypoint movement, 50 m range, 20% loss. Sweep **`L ∈ {2, 4, 8, 16, 32}`** over at least 20 seeded runs each. For each, report **median delivery delay**, delivery rate, and overhead ratio (total transmissions ÷ messages delivered).
+
+`L = 1` is deliberately excluded from the candidate set. `sprayDecision(1, peer, dest)` returns `0` — the frame is held and only ever delivered directly, so a mesh with `L = 1` does not relay at all. Including it in a sweep whose selection rule prefers the smallest value invites the rule to disable the product.
 
 ```bash
 npm run bench:routing
 ```
 
-- [ ] **Step 2: Pick L from the curve**, not from the PDF. Choose the smallest L whose delivery rate is within two percentage points of the best observed. Higher L costs battery and storage on every phone in the crowd for diminishing returns.
+- [ ] **Step 2: Pick L on delay, not on delivery rate.** Choose the smallest `L` whose **median delay** is within 10% of the best observed.
+
+Delivery rate is the wrong selection metric and Spyropoulos et al. show why: in their evaluation "the delivery ratio of almost all schemes … was above 90% for all traffic loads." With a 4-hour TTL the delivery curve saturates and cannot discriminate between candidates, so a rule keyed on it silently returns the smallest `L` on the list regardless of merit. §4.1 of the paper — *"Choosing L to Achieve a Required Expected Delay"* — selects against delay for exactly this reason. Delivery rate stays in the report as a saturation check.
+
+Record the node count the sweep ran at. Lemma 4.3 makes `L_min` a function of the number of nodes `M`, so a value chosen at 50 nodes does not transfer unexamined to a crowd of thousands.
+
+**Known simulator limitation, state it in the report:** the Phase 2 `Sim` models range, loss, latency and churn but has **no MAC contention model**. The paper implemented slotted random access with collision detection precisely because contention dominates at density — under it, epidemic delivery "plummeted to less than 50%". Expect the simulator to be optimistic at crowd density, and treat Task 6's hardware comparison as the check on that.
 
 - [ ] **Step 3: Record the full table in the ledger** and set `SPRAY_L_DEFAULT` to the chosen value with a comment naming the run that chose it.
 
@@ -197,7 +205,7 @@ The reason the simulator exists.
 ## Re-check before moving on
 
 - [ ] Re-run Phases 0–3 exit gates. All green.
-- [ ] **Seam check:** `git diff --stat <phase-2-tag>..HEAD -- src/app/` → empty apart from Diagnostics rows.
+- [ ] **Seam check:** `git diff --stat <phase-2-tag>..HEAD -- src/app/ ':!src/app/diagnostics.tsx'` → empty apart from Diagnostics rows.
 - [ ] Kill the app on the relay mid-transfer. No frame is lost from the origin's queue and no duplicate is delivered.
 - [ ] Send 50 messages in a burst. The queue stays bounded at `maxQueueFrames` and drops are counted by reason.
 - [ ] Confirm `framesDropped` shows a plausible distribution — all zeros usually means validation is not running.
