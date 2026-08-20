@@ -405,12 +405,12 @@ crate-type = ["cdylib", "lib"]
 name = "moshgrid_crypto"
 
 [dependencies]
-vodozemac = "0.9"
-uniffi = "0.28"
-thiserror = "1"
+vodozemac = "0.10"
+uniffi = "0.32"
+thiserror = "2"
 
 [build-dependencies]
-uniffi = { version = "0.28", features = ["build"] }
+uniffi = { version = "0.32", features = ["build"] }
 
 # Required for `cargo run --bin uniffi-bindgen`. Without this target the
 # command fails with "no bin target named `uniffi-bindgen`".
@@ -556,7 +556,7 @@ fn to_key_array(key: Vec<u8>) -> Result<[u8; 32], CryptoError> {
 }
 
 impl MoshgridAccount {
-    pub fn create() -> Self {
+    pub fn new() -> Self {
         Self { inner: Mutex::new(Account::new()) }
     }
 
@@ -589,7 +589,7 @@ impl MoshgridAccount {
 }
 ```
 
-**Why encrypted pickling is not optional.** `AccountPickle` serialises the Ed25519 and Curve25519 **secret** keys. Serialising it to plain JSON — as an earlier draft of this plan did — writes the device's private keys to disk in the clear, and makes `unpickle_with_wrong_key_fails` unpassable because any key would work. Verified signatures in vodozemac 0.9:
+**Why encrypted pickling is not optional.** `AccountPickle` serialises the Ed25519 and Curve25519 **secret** keys. Serialising it to plain JSON — as an earlier draft of this plan did — writes the device's private keys to disk in the clear, and makes `unpickle_with_wrong_key_fails` unpassable because any key would work. Verified signatures, read from the docs for the pinned version rather than recalled:
 
 ```rust
 pub fn encrypt(self, pickle_key: &[u8; 32]) -> String
