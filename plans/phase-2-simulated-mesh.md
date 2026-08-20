@@ -991,7 +991,8 @@ cd crypto && cargo test && ./../scripts/build-crypto-android.sh
 // src/crypto/session.ts
 import { getDb } from '../db';
 import { getContact } from '../db/contacts';
-import { pickleKey, unpickleSession, accountCreateOutbound, accountCreateInbound } from '../../modules/moshgrid-core';
+import { pickleKey } from '../crypto/pickleKey';
+import { unpickleSession, accountCreateOutbound, accountCreateInbound } from '../../modules/moshgrid-core';
 import type { DeviceId } from '../mesh/types';
 
 export type OlmMessage = { messageType: number; ciphertext: string };

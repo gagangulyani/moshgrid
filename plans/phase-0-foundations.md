@@ -42,6 +42,7 @@ All constraints from [`README.md`](README.md#global-constraints) apply. The ones
 | `modules/moshgrid-core/` | Kotlin Expo Module (native seam) |
 | `modules/moshgrid-core/src/MoshgridCoreModule.kt` | Module definition, exported functions |
 | `modules/moshgrid-core/index.ts` | TypeScript face of the module |
+| `modules/moshgrid-core/android/.../AccountRef.kt` | `SharedObject` holding a live vodozemac account |
 | `crypto/` | Rust crate wrapping vodozemac |
 | `crypto/src/lib.rs` | UniFFI-exported crypto surface |
 | `crypto/src/moshgrid_crypto.udl` | UniFFI interface definition |
@@ -356,13 +357,21 @@ git commit -m "feat: add moshgrid-core Kotlin Expo module with native info probe
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: Kotlin class `MoshgridAccount` with
+- Produces, **on the Kotlin side**, class `MoshgridAccount` with
   `create(): MoshgridAccount`,
   `identityKeys(): IdentityKeys` (`{ ed25519: String, curve25519: String }`),
   `oneTimeKeys(count: UInt): List<String>`,
   `pickle(key: ByteArray): String`,
   `unpickle(pickle: String, key: ByteArray): MoshgridAccount`.
+- Produces, **on the TypeScript side** (Step 11): `createAccount(): Account` and
+  `unpickleAccount(pickle: string, key: Uint8Array): Account`, where `Account` is a live
+  handle with `identityKeys()`, `oneTimeKeys(n)`, `sign(bytes)` and `pickle(key)`.
   Phase 1 builds identity and contacts directly on these.
+
+**`pickleKey()` is not produced here.** It needs the Android Keystore and arrives in
+Phase 1 Task 4. Phase 0 callers pass a key explicitly. An earlier draft had Phases 1 and 2
+importing `pickleKey` from this module with a comment pointing at a "Task 0" that does not
+exist (`DEFECTS.md` B4).
 
 - [ ] **Step 1: Install the Rust toolchain**
 
@@ -658,11 +667,145 @@ Then call `cryptoSelfTest()` from the Diagnostics screen (Task 4).
 
 **If this fails:** stop. Do not continue to Phase 1. Fall back to the prebuilt AAR `org.matrix.rustcomponents:crypto-android` from Maven Central, which ships vodozemac through `matrix-sdk-crypto`. It carries Matrix's room and device model, which is more API surface than we want, so it is the fallback rather than the default — but it unblocks. Record which route was taken in `plans/README.md`.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 11: Expose the account to TypeScript as a live object**
+
+This step exists because Phase 1 is written against a **stateful handle**:
+
+```typescript
+const account = createAccount();
+const keys = account.identityKeys();
+const sig  = account.sign(bytes);
+const blob = account.pickle(key);
+```
+
+A plain `Function("createAccount")` cannot deliver that. Functions return serialisable
+values across the bridge, and `MoshgridAccount` is a Kotlin object holding a pointer into
+Rust-owned memory. Returning it from a `Function` either fails to convert or, worse,
+returns a detached copy on which `sign()` uses the wrong key. **This was the real content
+of `DEFECTS.md` B5** — the gap was recorded as a name mismatch and is actually an
+architectural one.
+
+The Expo Modules API has exactly the right primitive: a `SharedObject` exposed through the
+`Class` DSL, with lifetime tied to the JS reference.
+
+```kotlin
+// modules/moshgrid-core/android/src/main/java/com/moshgrid/core/AccountRef.kt
+package com.moshgrid.core
+
+import expo.modules.kotlin.RuntimeContext
+import expo.modules.kotlin.sharedobjects.SharedObject
+import uniffi.moshgrid_crypto.MoshgridAccount
+
+class AccountRef(
+    runtimeContext: RuntimeContext,
+    val inner: MoshgridAccount,
+) : SharedObject(runtimeContext) {
+
+    // The Rust side owns memory this Kotlin object only points at. Without this,
+    // every account ever created leaks for the life of the process.
+    override fun sharedObjectDidRelease() {
+        inner.destroy()
+    }
+}
+```
+
+```kotlin
+// add to MoshgridCoreModule.kt definition block
+Class("Account", AccountRef::class) {
+    Constructor {
+        AccountRef(appContext.runtimeContext, MoshgridAccount())
+    }
+
+    Function("identityKeys") { ref: AccountRef ->
+        val k = ref.inner.identityKeys()
+        mapOf("ed25519" to k.ed25519, "curve25519" to k.curve25519)
+    }
+
+    Function("oneTimeKeys") { ref: AccountRef, count: Int ->
+        ref.inner.oneTimeKeys(count.toUInt())
+    }
+
+    Function("sign") { ref: AccountRef, message: ByteArray ->
+        ref.inner.sign(message)
+    }
+
+    Function("pickle") { ref: AccountRef, key: ByteArray ->
+        ref.inner.pickle(key)
+    }
+
+    StaticFunction("unpickle") { pickle: String, key: ByteArray ->
+        AccountRef(appContext.runtimeContext, MoshgridAccount.unpickle(pickle, key))
+    }
+}
+```
+
+**Verify two things here rather than assuming them**, because both are version-sensitive
+and both fail quietly:
+
+- **The UniFFI destructor name.** `destroy()` is the usual generated name for a Kotlin
+  UniFFI object, but confirm it against the generated
+  `java/uniffi/moshgrid_crypto/moshgrid_crypto.kt` from Step 8 before relying on it. If it
+  is `close()` or the class is `AutoCloseable`, use that. A wrong name here compiles only
+  if it happens to exist, and leaks silently if this override never runs.
+- **How `RuntimeContext` is reached from the definition block.** `appContext.runtimeContext`
+  is the current shape; older Expo versions differ. The compiler catches this one.
+
+```typescript
+// modules/moshgrid-core/src/MoshgridCore.types.ts — add
+export type IdentityKeys = { ed25519: string; curve25519: string };
+
+export interface Account {
+  identityKeys(): IdentityKeys;
+  oneTimeKeys(count: number): string[];
+  /** Base64 Ed25519 signature over the given bytes. */
+  sign(message: Uint8Array): string;
+  pickle(key: Uint8Array): string;
+}
+```
+
+```typescript
+// modules/moshgrid-core/index.ts — add
+export function createAccount(): Account {
+  return new MoshgridCore.Account();
+}
+
+export function unpickleAccount(pickle: string, key: Uint8Array): Account {
+  return MoshgridCore.Account.unpickle(pickle, key);
+}
+
+export type { Account, IdentityKeys };
+```
+
+Note the shape of the seam: `key` is a `Uint8Array` supplied by the caller. Phase 1 Task 4
+adds `pickleKey()` and passes its result in. Phase 0 never touches the Keystore.
+
+- [ ] **Step 12: Prove the handle is live, not a copy**
+
+Extend the Diagnostics `cryptoSelfTest` (Task 4) to round-trip through TypeScript rather
+than staying inside Kotlin:
+
+```typescript
+const a = createAccount();
+const key = new Uint8Array(32).fill(7);
+const before = a.identityKeys().ed25519;
+const restored = unpickleAccount(a.pickle(key), key);
+
+// Same identity after a pickle round-trip through JS.
+const ok = restored.identityKeys().ed25519 === before;
+
+// The handle is stateful: two calls on the SAME object must not mint new keys.
+const stable = a.identityKeys().ed25519 === before;
+```
+
+**Both must be true on the phone.** `stable` is the one that catches a detached copy, and
+it is the failure this whole step exists to prevent — a copy passes the round-trip test
+and then signs with a key nobody else has.
+
+- [ ] **Step 13: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: bind vodozemac to Kotlin via UniFFI"
+git commit -m "feat: bind vodozemac to Kotlin via UniFFI and expose a live Account handle"
 ```
 
 ---
@@ -990,6 +1133,8 @@ Every command must pass. These are commands, not judgement calls.
 - [ ] `cd android && ./gradlew :moshgrid-core:testDebugUnitTest` → pass
 - [ ] `npx expo run:android --device` → app launches on the physical phone
 - [ ] **Diagnostics screen on the phone shows `Crypto self-test: PASS`** ← the gate
+- [ ] **The self-test's `stable` check passes** — two `identityKeys()` calls on the same JS handle return the same key. This is what proves `createAccount()` returns a live object rather than a detached copy, and Phase 1 is unbuildable without it
+- [ ] `AccountRef.sharedObjectDidRelease()` calls the destructor name the generated UniFFI bindings actually declare — read `java/uniffi/moshgrid_crypto/moshgrid_crypto.kt`, do not assume `destroy()`
 - [ ] Toolchain versions recorded in `plans/README.md`: Expo SDK, vodozemac, Rust, Android SDK level of the test device
 
 ## Re-check before moving on

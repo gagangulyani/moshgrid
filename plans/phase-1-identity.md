@@ -36,6 +36,7 @@ All constraints from [`README.md`](README.md#global-constraints). Enforced direc
 | `src/crypto/identity.ts` | Identity creation, pickling |
 | `src/crypto/bundle.ts` | ContactBundle encode/decode/verify |
 | `src/crypto/deviceId.ts` | DeviceId derivation |
+| `src/crypto/pickleKey.ts` | Pickle key, unwrapped from the Keystore |
 | `crypto/src/lib.rs` | Extended with signing, verification, DH guard |
 | `modules/moshgrid-core/.../KeystoreModule.kt` | Pickle key in Android Keystore |
 | `src/app/identity.tsx` | "My code" QR screen |
@@ -807,39 +808,94 @@ git add -A && git commit -m "feat: add contact bundle encoding with signed paylo
 
 **Files:**
 - Create: `modules/moshgrid-core/android/src/main/java/com/moshgrid/core/PickleKeyStore.kt`
-- Create: `src/crypto/identity.ts`, `src/db/identity.ts`
-- Test: `src/crypto/__tests__/identity.test.ts`
+- Create: `src/crypto/pickleKey.ts`, `src/crypto/identity.ts`, `src/db/identity.ts`
+- Test: `src/crypto/__tests__/identity.test.ts`, `modules/moshgrid-core/android/src/androidTest/.../PickleKeyStoreTest.kt`
 
 **Interfaces:**
-- Consumes: `MoshgridAccount`, `getDb()`.
-- Produces: `loadOrCreateIdentity(): Promise<Identity>` where `Identity = { deviceId, ed25519Pub, curve25519Pub, displayName }`, and `myBundle(displayName): Promise<ContactBundle>`.
+- Consumes: `createAccount()` / `unpickleAccount()` from Phase 0, `getDb()`.
+- Produces: `pickleKey(): Promise<Uint8Array>` — **the key every later phase pickles with**; `loadOrCreateIdentity(): Promise<Identity>` where `Identity = { deviceId, ed25519Pub, curve25519Pub, displayName }`; and `myBundle(displayName): Promise<ContactBundle>`.
 
 - [ ] **Step 1: Add the Keystore-backed key in Kotlin**
+
+**Read this before writing the code.** The obvious design does not work on real phones.
+
+The natural thing is to generate an AES key in the Android Keystore and read its bytes
+back with `key.encoded`. **Hardware-backed Keystore keys are deliberately non-exportable,
+so `key.encoded` returns `null` on most devices** — that is the entire security property
+of the Keystore, working as intended, not a bug to handle. An earlier draft of this plan
+did exactly that and threw on null (`DEFECTS.md` B13), which meant Phase 1 would have
+crashed at first launch on any phone with a secure element, i.e. essentially all of them.
+
+So the Keystore key is used to **wrap**, never to *be*, the pickle key:
+
+1. A random 32-byte pickle key is generated once, in Kotlin.
+2. It is encrypted with a non-exportable Keystore AES-GCM key.
+3. The `iv || ciphertext` blob is stored in `SharedPreferences`.
+4. `getOrCreate()` decrypts it on demand.
+
+Plain `SharedPreferences` is fine because what lands there is ciphertext, and the key that
+decrypts it cannot leave the secure element. The property to hold onto: **the pickle key
+is never on disk in plaintext, and the key that unwraps it can never be extracted at all.**
 
 ```kotlin
 // modules/moshgrid-core/android/src/main/java/com/moshgrid/core/PickleKeyStore.kt
 package com.moshgrid.core
 
+import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Base64
 import java.security.KeyStore
+import java.security.SecureRandom
+import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 object PickleKeyStore {
     private const val ALIAS = "moshgrid.pickle.v1"
     private const val PROVIDER = "AndroidKeyStore"
+    private const val PREFS = "moshgrid.secrets"
+    private const val WRAPPED = "pickle_key_wrapped_v1"
+    private const val TRANSFORM = "AES/GCM/NoPadding"
+    private const val IV_BYTES = 12
+    private const val TAG_BITS = 128
 
-    fun getOrCreate(): ByteArray {
-        val keyStore = KeyStore.getInstance(PROVIDER).apply { load(null) }
-        val existing = (keyStore.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
-        val key: SecretKey = existing ?: generate()
-        return key.encoded ?: throw IllegalStateException(
-            "Keystore key is not exportable; use wrap/unwrap instead"
-        )
+    /** The 32-byte pickle key, decrypted. Never persisted in this form. */
+    fun getOrCreate(context: Context): ByteArray {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.getString(WRAPPED, null)?.let { return unwrap(it) }
+
+        val pickleKey = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        prefs.edit().putString(WRAPPED, wrap(pickleKey)).apply()
+        return pickleKey
     }
 
-    private fun generate(): SecretKey {
+    private fun wrap(plaintext: ByteArray): String {
+        val cipher = Cipher.getInstance(TRANSFORM)
+        // No IV is supplied: KeyGenParameterSpec defaults to
+        // setRandomizedEncryptionRequired(true), which REJECTS a caller-provided
+        // IV. The provider generates one and we read it back.
+        cipher.init(Cipher.ENCRYPT_MODE, keystoreKey())
+        val ciphertext = cipher.doFinal(plaintext)
+        return Base64.encodeToString(cipher.iv + ciphertext, Base64.NO_WRAP)
+    }
+
+    private fun unwrap(encoded: String): ByteArray {
+        val blob = Base64.decode(encoded, Base64.NO_WRAP)
+        val cipher = Cipher.getInstance(TRANSFORM)
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            keystoreKey(),
+            GCMParameterSpec(TAG_BITS, blob, 0, IV_BYTES),
+        )
+        return cipher.doFinal(blob, IV_BYTES, blob.size - IV_BYTES)
+    }
+
+    private fun keystoreKey(): SecretKey {
+        val keyStore = KeyStore.getInstance(PROVIDER).apply { load(null) }
+        (keyStore.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, PROVIDER)
         generator.init(
             KeyGenParameterSpec.Builder(
@@ -856,9 +912,77 @@ object PickleKeyStore {
 }
 ```
 
-**Implementer note:** hardware-backed Keystore keys are deliberately non-exportable, so `key.encoded` returns null on most devices. If that happens — and it should be expected, not treated as a bug — switch to the wrap/unwrap pattern: keep a random 32-byte pickle key in SQLite, encrypted with the Keystore key via AES-GCM, and decrypt it on load. Add `encryptPickleKey`/`decryptPickleKey` functions to this object and expose those instead. The property that must hold is: **the pickle key is never stored in plaintext on disk.** Write a test that asserts the stored blob does not contain the raw key bytes.
+`key.encoded` appears nowhere. There is nothing to fall back to, because the working
+design is the only design.
 
-- [ ] **Step 2: Write the failing test**
+**One failure mode to plan for:** the Keystore key can be invalidated — by a factory
+reset, by some backup/restore paths, and on some devices by a lockscreen credential
+change. `unwrap` then throws and the identity is **unrecoverable by design**. Catch it,
+delete the `WRAPPED` entry and the `identity` row, and create a fresh identity rather than
+crash-looping. Losing the identity is the correct outcome; the alternative is a key that
+survives a factory reset, which is not a property we want.
+
+- [ ] **Step 2: Expose it through the module**
+
+```kotlin
+// add to MoshgridCoreModule.kt definition block
+AsyncFunction("pickleKey") {
+    PickleKeyStore.getOrCreate(appContext.reactContext!!)
+}
+```
+
+```typescript
+// src/crypto/pickleKey.ts
+import { pickleKey as nativePickleKey } from '../../modules/moshgrid-core';
+
+/**
+ * The 32-byte key that encrypts every pickle on disk. Async because it may hit
+ * the secure element. Not cached here: the native side already reads it from
+ * SharedPreferences, and holding it in a JS module variable keeps it in the
+ * heap for the life of the process for no benefit.
+ */
+export function pickleKey(): Promise<Uint8Array> {
+  return nativePickleKey();
+}
+```
+
+```typescript
+// modules/moshgrid-core/index.ts — add
+export function pickleKey(): Promise<Uint8Array> {
+  return MoshgridCore.pickleKey();
+}
+```
+
+- [ ] **Step 3: Test the property that matters, on the device**
+
+The wrap/unwrap path cannot be unit-tested off-device — it needs a real Keystore. So test
+it where it runs, and test the security property rather than the mechanism:
+
+```kotlin
+// modules/moshgrid-core/android/src/androidTest/java/com/moshgrid/core/PickleKeyStoreTest.kt
+@Test
+fun pickleKeyIsStableAcrossCalls() {
+    val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+    assertArrayEquals(PickleKeyStore.getOrCreate(ctx), PickleKeyStore.getOrCreate(ctx))
+}
+
+@Test
+fun theKeyIsNeverOnDiskInPlaintext() {
+    val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+    val key = PickleKeyStore.getOrCreate(ctx)
+    val stored = ctx.getSharedPreferences("moshgrid.secrets", Context.MODE_PRIVATE)
+        .getString("pickle_key_wrapped_v1", null)!!
+    val raw = Base64.decode(stored, Base64.NO_WRAP)
+
+    // The plaintext key must not appear anywhere in the stored blob.
+    assertFalse(raw.toList().windowed(key.size).any { it.toByteArray().contentEquals(key) })
+}
+```
+
+Note this is `androidTest`, not `test` — it needs a device or emulator, so it runs under
+`connectedDebugAndroidTest`, not the JVM unit-test task in the exit gates.
+
+- [ ] **Step 4: Write the failing test**
 
 ```typescript
 // src/crypto/__tests__/identity.test.ts
@@ -890,19 +1014,21 @@ test('a bundle with a tampered display name fails verification', async () => {
 });
 ```
 
-- [ ] **Step 3: Run and watch it fail**
+- [ ] **Step 5: Run and watch it fail**
 
 ```bash
 npm test -- crypto/identity
 ```
 
-- [ ] **Step 4: Implement**
+- [ ] **Step 6: Implement**
 
 ```typescript
 // src/crypto/identity.ts
-import { createAccount, unpickleAccount, pickleKey } from '../../modules/moshgrid-core';
-// createAccount/unpickleAccount/pickleKey are thin TS wrappers added in Task 0 below —
-// they map to MoshgridAccount(), MoshgridAccount.unpickle() and the Keystore bridge.
+import { createAccount, unpickleAccount, type Account } from '../../modules/moshgrid-core';
+import { pickleKey } from './pickleKey';
+// createAccount and unpickleAccount come from Phase 0 Task 3 Step 11 — they return a
+// live Account handle backed by a SharedObject, not a plain value.
+// pickleKey is local to this phase: it needs the Android Keystore, built in Step 1 above.
 import { getDb } from '../db';
 import { deviceIdFromEd25519 } from './deviceId';
 import { signableBytes, BUNDLE_VERSION, type ContactBundle } from './bundle';
@@ -964,13 +1090,13 @@ export async function myBundle(displayName: string): Promise<ContactBundle> {
 
 Re-pickling after generating a one-time key is essential — vodozemac's account state changed, and losing it means the published pre-key has no matching private half, so nobody can ever start a session with you.
 
-- [ ] **Step 5: Run and watch it pass**
+- [ ] **Step 7: Run and watch it pass**
 
 ```bash
 npm test -- crypto/identity
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add -A && git commit -m "feat: persist identity with keystore-backed pickle key"
@@ -1312,6 +1438,7 @@ git add -A && git commit -m "feat: add identity, scan, and contacts screens"
 ## Exit gates
 
 - [ ] `npm run lint` → exit 0
+- [ ] `cd android && ./gradlew :moshgrid-core:connectedDebugAndroidTest` → pass, including `theKeyIsNeverOnDiskInPlaintext` (needs a device — the Keystore has no JVM implementation)
 - [ ] `npm test` → all pass, including `addContactFromBundle` rejection test
 - [ ] `npm test -- db/client` → 7 passed, including the adapter-contract test and the replay-column guard
 - [ ] `npm test -- deviceId` → 5 passed, including the known-answer vectors
@@ -1326,7 +1453,7 @@ git add -A && git commit -m "feat: add identity, scan, and contacts screens"
 
 - [ ] Re-run Phase 0's exit gates. All still green.
 - [ ] Verify a tampered bundle is genuinely refused: in a REPL, take a valid bundle, change one character of `displayName`, and confirm `addContactFromBundle` throws and adds no row.
-- [ ] Confirm the pickle key is not on disk in plaintext: `adb shell run-as com.moshgrid.app cat databases/moshgrid.db | strings | head -50` — the raw key bytes must not appear.
+- [ ] Confirm the pickle key is not on disk in plaintext. It lives wrapped in SharedPreferences, not SQLite, so check both: `adb shell run-as com.moshgrid.app cat shared_prefs/moshgrid.secrets.xml` shows only base64 ciphertext, and `... cat databases/moshgrid.db | strings | head -50` shows no key bytes.
 - [ ] Confirm re-pickling after one-time key generation works: create a bundle, restart the app, create another bundle, and confirm both one-time keys differ.
 - [ ] **Confirm the seam agrees with the device.** The suite proves the SQL is right under `node:sqlite`; it does not prove `expo-sqlite` behaves identically. Once on the phone, read `PRAGMA user_version` and `PRAGMA table_info(contacts)` from the real database and confirm they match what the tests assert. Do this once per migration added, not once ever.
 
