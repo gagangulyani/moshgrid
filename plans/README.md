@@ -115,6 +115,23 @@ Ten defects were verified in the source PDFs on 2026-08-20. Each must end with a
 | 9 | Delivery rates cited without measurement | `bench:routing` report committed | 4 | ☐ |
 | 10 | Purple Guide misattributed | n/a — text removed from scope | — | ☑ |
 
+## Toolchain versions
+
+Read from the machine, not assumed. Every later phase is written against these.
+
+| Component | Version | Note |
+|---|---|---|
+| Expo SDK | `~57.0.15` | |
+| React Native | `0.86.2` | |
+| React | `19.2.3` | |
+| expo-router | `~57.0.15` | Routes resolve from `src/app/` with no extra config — verified by a clean `expo export` |
+| TypeScript | `~6.0.3` | `expo/tsconfig.base` already sets `moduleResolution: "bundler"`, which is what lets `@noble/hashes/sha2.js` resolve |
+| Node | `v22.22.3` | 22.5+ required for `node:sqlite`, which the Phase 1 test suite depends on |
+| Rust | `1.98.0` | |
+| Android SDK | platform `android-36.1` | at `~/Library/Android/sdk`; `ANDROID_HOME` is **not** set in the shell profile |
+| JDK | **21.0.10**, from Android Studio's bundled JBR | The system `java` is **1.8.0_501**, which AGP will not run under. Gradle needs `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"` |
+| Android NDK | **not installed** | Required by `cargo-ndk` in Phase 0 Task 3 |
+
 ## Measured-numbers ledger
 
 Every performance number the project states must appear here with the command that produced it. Empty until measured. **Never fill a row from an estimate.**
