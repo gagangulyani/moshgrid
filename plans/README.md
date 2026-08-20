@@ -15,16 +15,23 @@
 3. `Verify` on each phase re-runs earlier phases' gates. Regressions surface at the next phase boundary rather than three phases later.
 4. If a gate fails, stop. Do not proceed and fix later — the whole point of the gates is that later work is worthless if an earlier layer is wrong.
 
-> **Audit status:** every file was independently audited on 2026-08-20, each auditor
-> given only a file path and told to refute it. **Every completed audit found blocking
-> problems; none returned SOUND.** 32 defects fixed, 22 open.
+> **Audit status:** all 11 files were independently audited on 2026-08-20, each auditor
+> given only a file path and told to refute it. **Every audit found blocking problems;
+> none returned SOUND.** 43 defects fixed, 24 open, 9 auditor claims rejected after
+> independent verification.
 >
 > **Read [`DEFECTS.md`](DEFECTS.md) before executing any phase.** Two things in it
 > matter more than the individual entries: four defects were introduced *while fixing
 > other defects*, and a large class of the tests as written **cannot fail**.
 >
 > Phase 7 was rewritten outright — its original architecture rested on an API that does
-> not exist. Phases 8 and 9 are still under audit.
+> not exist. Phase 1's database and hashing were rebuilt around injected drivers, because
+> `expo-sqlite` and `expo-crypto` have no implementation under jest and the phase
+> therefore had no executable test suite. Phase 8's defect-3 regression test was rewritten
+> after it was found to pass against a build with signature verification removed.
+>
+> What is left is mostly unwritten test bodies (B12, B31) and known gaps, chief among them
+> **B23: replay protection is specified but not implemented.**
 
 ## Progress
 

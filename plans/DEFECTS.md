@@ -7,8 +7,12 @@ summary — an auditor handed a justification tends to agree with it.
 Every finding below was **re-verified independently** before being acted on. Findings
 the auditors got wrong are recorded as rejected, with the reason.
 
-**Status: 11 of 11 audited.**
+**Status: 11 of 11 audited. 43 fixed, 24 outstanding, 9 auditor claims rejected.**
 **Every single audit found blocking problems. None returned SOUND.**
+
+The critical blockers are now closed: Phase 1's test suite is executable, and Phase 8's
+defect-3 regression test can fail. What remains is largely unwritten test bodies and
+known gaps, all listed below.
 
 ---
 
@@ -32,10 +36,23 @@ dropping its row scoping. That sentence read as authoritative, survived a fact-c
 propagated into the spec and a phase plan, and justified deprioritising a platform.
 **Read the table, not the summary of the table.**
 
-**4. Tests that cannot fail.** 43+ stubs with empty bodies, assertions with tolerances
-so wide they accept anything (`toBeCloseTo(470, -2)` = ±50 m), `expect(a).not.toBe(b)`
-on two Promises, and a Y-flip test that is three comments and no assertion. A green
-suite that proves nothing is worse than no suite, because it is trusted.
+**4. Tests that cannot fail.** The largest class among the *fixed* findings, and the one
+worth the most attention. Stubs with empty bodies, tolerances so wide they accept
+anything (`toBeCloseTo(470, -2)` = ±50 m), `expect(a).not.toBe(b)` on two Promises, a
+Y-flip test that is three comments and no assertion — and, worst of the set, **the named
+regression test for the project's headline security defect, which would have passed
+against a build with signature verification deleted.**
+
+Two structural causes, both now designed out rather than patched:
+
+- **An unrunnable test suite reads as a passing one.** `expo-sqlite` and `expo-crypto`
+  have no implementation under jest, so whole phases had no executable tests while
+  looking thoroughly tested. Fixed by injecting real drivers, not by mocking.
+- **A test that has never been red proves nothing.** Phase 8 attacks code that already
+  exists, so red-first is the wrong standard there. Replaced with mutation testing:
+  break the specific defence, confirm the named test goes red, restore.
+
+A green suite that proves nothing is worse than no suite, because it is trusted.
 
 ---
 
@@ -51,6 +68,15 @@ suite that proves nothing is worse than no suite, because it is trusted.
 | A6 | **Privacy regression:** `origin_pubkey` in cleartext makes presence confirmable with cryptographic certainty by anyone holding a public contact bundle | **High** | **2** | spec §6.1 vs §6.3 |
 | A33 | **iOS relaunch claim was wrong.** TN3115's AccessorySetupKit note applies to two table rows (force-quit, Control Centre toggle), not globally; system-terminated, crashed and rebooted devices are still relaunched. Also: a backgrounded iPhone with `bluetooth-central` does **not** stop scanning, and ActivityKit grants no background execution — both were stated backwards | **High** | 3 | TN3115 relaunch table |
 | A34 | XCFramework build could not work: `crate-type` lacked `staticlib`, `-headers` omitted, `--features=uniffi/cli` dropped | Blocking | 1 | Phase 0 vs Phase 9 |
+| A35 | **`expo-sqlite` cannot run under jest** — no native bridge in a Node process. Phase 1 Tasks 1, 5 and 6 had no executable test suite at all. Fixed with a four-method `SqlDb` seam: `expo-sqlite` on device, `node:sqlite` (a Node builtin) in tests. Both real SQLite, so the tests run the SQL the phone runs | **Critical** | 4 | was B1 |
+| A36 | **`expo-crypto` returns `undefined` under jest.** Replaced with `@noble/hashes` — MIT, zero dependencies, verified against the npm registry. Pure TypeScript, no bridge, and synchronous | **Critical** | 4 | was B2 |
+| A37 | **`deviceIdFromEd25519` declared sync, implemented async**, so `expect(a).not.toBe(b)` compared two `Promise` objects and passed unconditionally — it would have passed against a function returning `''`. Now genuinely sync, with known-answer vectors | High | 4 | was B3 |
+| A38 | **`test_forged_routing_header_is_rejected` passed vacuously** — the named regression test for defect 3. The forged frame died at `id_key_mismatch`, upstream of the signature check, so the test would have passed against a build with signature verification deleted. The scene now gives Eve a real Alice contact and real public key, and every test asserts *which* counter fired | **High** | 4 | was B25 |
+| A39 | The `MUTABLE FIELDS` test compared two *different* frames — `nextFakeUuid` increments and `createdAtMs` is read from the clock, so signed fields differed. Two frames cannot demonstrate relay mutability; only a before/after on one frame can | **High** | 4 | was B26 |
+| A40 | **`tampering with the destination after signing` tested nothing of the sort** — it was `forgeFrame` with a bad signature under a second name. The redirection path was never exercised. Found while fixing B25 | High | 4 | new |
+| A41 | `MaliciousLink` would not compile: `createAccount` and `deviceIdFromEd25519` never imported, `FAKE_PUBKEY_B64` and `nextFakeUuid` present only in prose | High | 1 | was B27 |
+| A42 | `'A'.repeat(88)` decodes to 66 bytes, so the fake signature was rejected on length before any MAC check — another test passing for the wrong reason. Unpadded base64 of 64 bytes is 86 chars | Medium | 4 | was B28 |
+| A43 | Phase 8 Task 2 instructed the implementer both to watch the test fail first and that passing unchanged was correct. Replaced with **mutation testing**, which is the right standard for a test attacking code that already exists | Medium | 1 | was B30 |
 | A7 | Guarantee "nobody can alter a frame in flight" was false — `hop_count`/`copies` are unsigned and attacker-controlled | High | 1 | `phase-8:401` pins it as intended |
 | A10 | `copies > previous hop's value` is vacuous — no signed hop chain exists, so the check compares the field to itself | Medium | 1 | — |
 | A11 | `sessions` keyed per contact breaks Olm, which has concurrent sessions per device; overwriting loses in-flight messages | High | 1 | schema vs Olm semantics |
@@ -82,16 +108,8 @@ suite that proves nothing is worse than no suite, because it is trusted.
 |---|---|---|
 | B23 | **Replay protection still does not exist.** The spec was rewritten to specify a highest-seen + 1024-bit bitmap and named `highest_sequence` / `replay_bitmap` columns — but no schema declares them, `highestSequence` is still read twice and written zero times, and no test covers the bitmap. **This was marked "Fixed" on the strength of a prose change alone; that was a false green and is corrected here.** | **High** |
 | B24 | No test asserts that the seen-set is written only *after* signature verification — the keyless-flood eviction attack the spec describes is untested in the phase whose job is to attack | High |
-| B25 | **`test_forged_routing_header_is_rejected` passes vacuously** — the named regression test for defect 3. `forgeFrame` defaults `originPubkey` to a fake, so the frame dies at `id_key_mismatch`, a pre-signature check. The test would pass identically against a build with signature verification removed entirely | **High** |
-| B26 | The `MUTABLE FIELDS` test compares two *different* frames — `nextFakeUuid` increments, so `frameId` and `createdAtMs` differ and the assertion fails. The spec's guarantee sentence cites this test as its evidence | **High** |
-| B27 | `MaliciousLink` will not compile: `createAccount` and `deviceIdFromEd25519` are used but never imported; `FAKE_PUBKEY_B64` and `nextFakeUuid` appear only in prose | High |
-| B28 | `'A'.repeat(88)` is 66 bytes, not 64 — unpadded base64 of 64 bytes is 86 chars. The comment is wrong and the two constants use inconsistent padding conventions | Medium |
 | B29 | `floodQueue` and `impersonate` promised in the interface, never implemented, but Tasks 5 and 6 need them | High |
-| B30 | Task 2's steps contradict its own exit gate: one says the test must be observed failing first, another says passing without change is the correct outcome | Medium |
 | B31 | 22 tests in Phase 8 cannot fail — 21 empty bodies plus one property test that ignores its inputs and returns `true` | High |
-| B1 | `expo-sqlite` cannot run under jest — Phase 1 Tasks 1, 5, 6 test suites unexecutable. Fix is an injected DB opener | **Critical** |
-| B2 | `expo-crypto` returns undefined under jest — `digestStringAsync`, `randomUUID`. Fix is a pure-JS hash and the `idFn` seam | **Critical** |
-| B3 | `deviceIdFromEd25519` declared sync, implemented async; `expect(a).not.toBe(b)` on two Promises passes **vacuously** | High |
 | B4 | `pickleKey()` imported in Phases 1 and 2, defined nowhere | High |
 | B5 | `createAccount`/`unpickleAccount` do not match Phase 0's produced API | High |
 | B6 | `describeMeshEngineContract` exported from a `.test.ts` — jest fails the suite for containing no tests | High |
