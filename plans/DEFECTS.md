@@ -7,7 +7,7 @@ summary — an auditor handed a justification tends to agree with it.
 Every finding below was **re-verified independently** before being acted on. Findings
 the auditors got wrong are recorded as rejected, with the reason.
 
-**Status: 11 of 11 audited. 43 fixed, 24 outstanding, 9 auditor claims rejected.**
+**Status: 11 of 11 audited. 46 fixed, 21 outstanding, 9 auditor claims rejected.**
 **Every single audit found blocking problems. None returned SOUND.**
 
 The critical blockers are now closed: Phase 1's test suite is executable, and Phase 8's
@@ -77,6 +77,9 @@ A green suite that proves nothing is worse than no suite, because it is trusted.
 | A41 | `MaliciousLink` would not compile: `createAccount` and `deviceIdFromEd25519` never imported, `FAKE_PUBKEY_B64` and `nextFakeUuid` present only in prose | High | 1 | was B27 |
 | A42 | `'A'.repeat(88)` decodes to 66 bytes, so the fake signature was rejected on length before any MAC check — another test passing for the wrong reason. Unpadded base64 of 64 bytes is 86 chars | Medium | 4 | was B28 |
 | A43 | Phase 8 Task 2 instructed the implementer both to watch the test fail first and that passing unchanged was correct. Replaced with **mutation testing**, which is the right standard for a test attacking code that already exists | Medium | 1 | was B30 |
+| A44 | **`createAccount()` could not return a usable object.** Phase 1 is written against a stateful handle, but Phase 0 produced only plain `Function`s — and `MoshgridAccount` holds a pointer into Rust-owned memory, so a `Function` either fails to convert it or returns a detached copy that signs with the wrong key. Now a `SharedObject` behind the Expo `Class` DSL. Recorded as a name mismatch; was architectural | **Critical** | 1 | was B5 |
+| A45 | `pickleKey()` imported from the native module with a comment citing a "Task 0" that does not exist. It needs the Keystore, so it belongs to Phase 1 | High | 1 | was B4 |
+| A46 | **Hardware-backed Keystore keys are non-exportable, so `key.encoded` returns `null`** on essentially every modern phone — Phase 1 would have crashed at first launch. Wrap/unwrap is now the design rather than a fallback paragraph; `key.encoded` appears nowhere | **High** | 1 | was B13 |
 | A7 | Guarantee "nobody can alter a frame in flight" was false — `hop_count`/`copies` are unsigned and attacker-controlled | High | 1 | `phase-8:401` pins it as intended |
 | A10 | `copies > previous hop's value` is vacuous — no signed hop chain exists, so the check compares the field to itself | Medium | 1 | — |
 | A11 | `sessions` keyed per contact breaks Olm, which has concurrent sessions per device; overwriting loses in-flight messages | High | 1 | schema vs Olm semantics |
@@ -110,8 +113,6 @@ A green suite that proves nothing is worse than no suite, because it is trusted.
 | B24 | No test asserts that the seen-set is written only *after* signature verification — the keyless-flood eviction attack the spec describes is untested in the phase whose job is to attack | High |
 | B29 | `floodQueue` and `impersonate` promised in the interface, never implemented, but Tasks 5 and 6 need them | High |
 | B31 | 22 tests in Phase 8 cannot fail — 21 empty bodies plus one property test that ignores its inputs and returns `true` | High |
-| B4 | `pickleKey()` imported in Phases 1 and 2, defined nowhere | High |
-| B5 | `createAccount`/`unpickleAccount` do not match Phase 0's produced API | High |
 | B6 | `describeMeshEngineContract` exported from a `.test.ts` — jest fails the suite for containing no tests | High |
 | B7 | `getEngine` fake branch seeds a Sim with only self, so the Phase 2 phone gate is unreachable; also imports `BleLink` before Phase 3 creates it, breaking `tsc --noEmit` | High |
 | B8 | `ratchet_survives_out_of_order_delivery` does not test out-of-order delivery — the inbound session decrypts `first`, preserving order | High |
@@ -119,7 +120,6 @@ A green suite that proves nothing is worse than no suite, because it is trusted.
 | B10 | Bloom filter is dead code in Phase 2 — nothing calls `mightContain`; `framesFor(_peer)` ignores its argument | Medium |
 | B11 | `forgeFrame` spread overwrote the padded payload with the unpadded original, defeating size bucketing | Medium |
 | B12 | 43+ placeholder test stubs across phases 3–8 | High |
-| B13 | Keystore `key.encoded` returns null for hardware-backed keys; wrap/unwrap is the only working design | High |
 | B14 | `myBundle()` mints a fresh one-time key per call; old ones silently evicted, so a friend who scanned yesterday may hold a dead pre-key | Medium |
 | B15 | Spec says SipHash-2-4; plan implements seeded FNV-1a. Digest is public, so an attacker can grind ids to force collisions | Medium |
 | B16 | `MAX_FRAME_BYTES = 4096` cannot hold a 4096-byte payload plus ~150 bytes of header and signature | Medium |

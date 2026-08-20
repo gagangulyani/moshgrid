@@ -17,7 +17,7 @@
 
 > **Audit status:** all 11 files were independently audited on 2026-08-20, each auditor
 > given only a file path and told to refute it. **Every audit found blocking problems;
-> none returned SOUND.** 43 defects fixed, 24 open, 9 auditor claims rejected after
+> none returned SOUND.** 46 defects fixed, 21 open, 9 auditor claims rejected after
 > independent verification.
 >
 > **Read [`DEFECTS.md`](DEFECTS.md) before executing any phase.** Two things in it
