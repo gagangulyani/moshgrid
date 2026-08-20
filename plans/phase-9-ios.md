@@ -18,13 +18,28 @@
 
 ## Why this phase is last, and honest about its ceiling
 
-iOS cannot be a reliable mesh relay. This is a platform policy, not a bug to engineer around, and not something a cleverer implementation fixes.
+iOS cannot be a reliable mesh relay. That conclusion survives audit — but the reasons an earlier draft of this file gave for it did not, and the corrected reasons are stronger.
 
-**The hard constraint:** starting with iOS 26, an app is relaunched for Bluetooth events **only if it uses AccessorySetupKit**. CoreBluetooth's state preservation and restoration no longer relaunches a terminated app on its own. AccessorySetupKit requires a system picker UI for each accessory the user pairs — workable for a single named heart-rate monitor, unusable for an automatic mesh that must discover dozens of strangers' phones in a field.
+**The two hard constraints, both structural:**
 
-The practical consequence: **an iPhone that has been force-quit or restarted cannot rejoin the mesh until the user manually reopens the app.** An iPhone in a pocket with the app backgrounded scans for a limited window and then stops.
+1. **`CBPeripheralManager` cannot advertise manufacturer-specific data.** `startAdvertising` supports only `CBAdvertisementDataLocalNameKey` and `CBAdvertisementDataServiceUUIDsKey`. Phase 3's 6-byte presence beacon has nowhere to live, so an iOS device advertises a service UUID and nothing else — and Android's scanner needs a branch treating a missing manufacturer payload as "iOS peer, connect to identify" rather than as malformed.
+2. **A backgrounded iPhone is largely invisible to Android.** Apple: service UUIDs that do not fit go to an overflow area "discoverable only by an iOS device explicitly scanning for them", and "while your app is in the background, the local name isn't advertised and all service UUIDs are in the overflow area."
 
-The source PDF stated this correctly in its Platform Behaviour section — one of the places it was honest — and then undercut itself by listing "cross-platform mesh" as a headline capability. This phase keeps the honest half.
+**What the earlier draft got wrong, and how.** It claimed that from iOS 26 an app is relaunched for Bluetooth events *only* if it uses AccessorySetupKit, and that a force-quit **or restarted** iPhone cannot rejoin until manually reopened. TN3115 does not say that. The AccessorySetupKit note is attached to exactly two rows of its relaunch table:
+
+| State | Relaunched? |
+|---|---|
+| Removed from memory by the system | **Yes** |
+| App crashed | **Yes** |
+| Device restarted | **Yes**, after first unlock |
+| Force-quit by the user | No — AccessorySetupKit apps only |
+| Control Centre Bluetooth toggled | Yes — AccessorySetupKit apps only |
+
+That draft also said a backgrounded iPhone "scans for a limited window and then stops." With the `bluetooth-central` background mode it keeps scanning; Apple says only that "the interval at which your central device scans for advertising packets increases." Discovery gets slower, not dead. The ~30-second suspension applies to an app *without* the background mode.
+
+The wrong version was near-verbatim a GitHub issue's paraphrase of TN3115 which had compressed the table into one sentence and dropped the row scoping. **Read the table, not the summary of the table** — and note this same paraphrase was what the project's original fact-check of the source PDFs relied on, so the error was inherited rather than invented here.
+
+AccessorySetupKit does still block the mesh case where it applies: matching criteria must be declared ahead of time in `ASDiscoveryDescriptor`, and `showPicker` always requires human selection. There is no silent discovery of strangers' phones. But that governs relaunch after force-quit, not background BLE generally.
 
 **What this means for the product:** iOS users get a working messenger that finds their friends when the app is open, which is the majority of what people actually want at a festival. They do not get background relaying, and marketing must never imply they do. The Android phones and, later, the deferred super-node hardware carry the mesh.
 

@@ -7,8 +7,8 @@ summary — an auditor handed a justification tends to agree with it.
 Every finding below was **re-verified independently** before being acted on. Findings
 the auditors got wrong are recorded as rejected, with the reason.
 
-**Status: 9 of 11 audited.** Phases 8 and 9 in progress.
-**Every completed audit found blocking problems.** None returned SOUND.
+**Status: 11 of 11 audited.**
+**Every single audit found blocking problems. None returned SOUND.**
 
 ---
 
@@ -26,7 +26,13 @@ the same afternoon. Fixing the relay-verification hole broke the wire format, br
 `buildFrame`, inverted a Phase 8 test into defending the original bug, and shipped a
 privacy regression. **A correction is a change, and changes need auditing too.**
 
-**3. Tests that cannot fail.** 43+ stubs with empty bodies, assertions with tolerances
+**3. Errors inherited from a lossy secondary source.** The iOS relaunch claim came from
+a GitHub issue that had compressed Apple's TN3115 relaunch *table* into one sentence,
+dropping its row scoping. That sentence read as authoritative, survived a fact-check,
+propagated into the spec and a phase plan, and justified deprioritising a platform.
+**Read the table, not the summary of the table.**
+
+**4. Tests that cannot fail.** 43+ stubs with empty bodies, assertions with tolerances
 so wide they accept anything (`toBeCloseTo(470, -2)` = ±50 m), `expect(a).not.toBe(b)`
 on two Promises, and a Y-flip test that is three comments and no assertion. A green
 suite that proves nothing is worse than no suite, because it is trusted.
@@ -43,6 +49,8 @@ suite that proves nothing is worse than no suite, because it is trusted.
 | A4 | Phase 8 asserted "unknown origin is dropped" — backwards under the corrected model; the test defended the bug it was meant to catch | **Critical** | **2** | read after spec change |
 | A5 | `buildFrame` could not construct a valid frame after the type gained a field | High | **2** | signature vs type |
 | A6 | **Privacy regression:** `origin_pubkey` in cleartext makes presence confirmable with cryptographic certainty by anyone holding a public contact bundle | **High** | **2** | spec §6.1 vs §6.3 |
+| A33 | **iOS relaunch claim was wrong.** TN3115's AccessorySetupKit note applies to two table rows (force-quit, Control Centre toggle), not globally; system-terminated, crashed and rebooted devices are still relaunched. Also: a backgrounded iPhone with `bluetooth-central` does **not** stop scanning, and ActivityKit grants no background execution — both were stated backwards | **High** | 3 | TN3115 relaunch table |
+| A34 | XCFramework build could not work: `crate-type` lacked `staticlib`, `-headers` omitted, `--features=uniffi/cli` dropped | Blocking | 1 | Phase 0 vs Phase 9 |
 | A7 | Guarantee "nobody can alter a frame in flight" was false — `hop_count`/`copies` are unsigned and attacker-controlled | High | 1 | `phase-8:401` pins it as intended |
 | A10 | `copies > previous hop's value` is vacuous — no signed hop chain exists, so the check compares the field to itself | Medium | 1 | — |
 | A11 | `sessions` keyed per contact breaks Olm, which has concurrent sessions per device; overwriting loses in-flight messages | High | 1 | schema vs Olm semantics |
@@ -74,6 +82,13 @@ suite that proves nothing is worse than no suite, because it is trusted.
 |---|---|---|
 | B23 | **Replay protection still does not exist.** The spec was rewritten to specify a highest-seen + 1024-bit bitmap and named `highest_sequence` / `replay_bitmap` columns — but no schema declares them, `highestSequence` is still read twice and written zero times, and no test covers the bitmap. **This was marked "Fixed" on the strength of a prose change alone; that was a false green and is corrected here.** | **High** |
 | B24 | No test asserts that the seen-set is written only *after* signature verification — the keyless-flood eviction attack the spec describes is untested in the phase whose job is to attack | High |
+| B25 | **`test_forged_routing_header_is_rejected` passes vacuously** — the named regression test for defect 3. `forgeFrame` defaults `originPubkey` to a fake, so the frame dies at `id_key_mismatch`, a pre-signature check. The test would pass identically against a build with signature verification removed entirely | **High** |
+| B26 | The `MUTABLE FIELDS` test compares two *different* frames — `nextFakeUuid` increments, so `frameId` and `createdAtMs` differ and the assertion fails. The spec's guarantee sentence cites this test as its evidence | **High** |
+| B27 | `MaliciousLink` will not compile: `createAccount` and `deviceIdFromEd25519` are used but never imported; `FAKE_PUBKEY_B64` and `nextFakeUuid` appear only in prose | High |
+| B28 | `'A'.repeat(88)` is 66 bytes, not 64 — unpadded base64 of 64 bytes is 86 chars. The comment is wrong and the two constants use inconsistent padding conventions | Medium |
+| B29 | `floodQueue` and `impersonate` promised in the interface, never implemented, but Tasks 5 and 6 need them | High |
+| B30 | Task 2's steps contradict its own exit gate: one says the test must be observed failing first, another says passing without change is the correct outcome | Medium |
+| B31 | 22 tests in Phase 8 cannot fail — 21 empty bodies plus one property test that ignores its inputs and returns `true` | High |
 | B1 | `expo-sqlite` cannot run under jest — Phase 1 Tasks 1, 5, 6 test suites unexecutable. Fix is an injected DB opener | **Critical** |
 | B2 | `expo-crypto` returns undefined under jest — `digestStringAsync`, `randomUUID`. Fix is a pure-JS hash and the `idFn` seam | **Critical** |
 | B3 | `deviceIdFromEd25519` declared sync, implemented async; `expect(a).not.toBe(b)` on two Promises passes **vacuously** | High |
