@@ -692,14 +692,14 @@ The Expo Modules API has exactly the right primitive: a `SharedObject` exposed t
 // modules/moshgrid-core/android/src/main/java/com/moshgrid/core/AccountRef.kt
 package com.moshgrid.core
 
-import expo.modules.kotlin.RuntimeContext
+import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.sharedobjects.SharedObject
 import uniffi.moshgrid_crypto.MoshgridAccount
 
 class AccountRef(
-    runtimeContext: RuntimeContext,
+    appContext: AppContext,
     val inner: MoshgridAccount,
-) : SharedObject(runtimeContext) {
+) : SharedObject(appContext) {
 
     // The Rust side owns memory this Kotlin object only points at. Without this,
     // every account ever created leaks for the life of the process.
@@ -713,7 +713,7 @@ class AccountRef(
 // add to MoshgridCoreModule.kt definition block
 Class("Account", AccountRef::class) {
     Constructor {
-        AccountRef(appContext.runtimeContext, MoshgridAccount())
+        AccountRef(appContext, MoshgridAccount())
     }
 
     Function("identityKeys") { ref: AccountRef ->
@@ -734,7 +734,7 @@ Class("Account", AccountRef::class) {
     }
 
     StaticFunction("unpickle") { pickle: String, key: ByteArray ->
-        AccountRef(appContext.runtimeContext, MoshgridAccount.unpickle(pickle, key))
+        AccountRef(appContext, MoshgridAccount.unpickle(pickle, key))
     }
 }
 ```
@@ -747,8 +747,12 @@ and both fail quietly:
   `java/uniffi/moshgrid_crypto/moshgrid_crypto.kt` from Step 8 before relying on it. If it
   is `close()` or the class is `AutoCloseable`, use that. A wrong name here compiles only
   if it happens to exist, and leaks silently if this override never runs.
-- **How `RuntimeContext` is reached from the definition block.** `appContext.runtimeContext`
-  is the current shape; older Expo versions differ. The compiler catches this one.
+- **The `SharedObject` constructor argument.** Verified against the installed
+  `expo-modules-core`: the primary constructor takes `Runtime?`, with a secondary
+  `constructor(appContext: AppContext)` — so `SharedObject(appContext)` is correct here,
+  and the generated module template uses exactly that. Some Expo documentation says
+  `RuntimeContext`; **that name does not exist in this version.** The compiler catches
+  this one, but only after a full Gradle run, so it is worth getting right first time.
 
 ```typescript
 // modules/moshgrid-core/src/MoshgridCore.types.ts — add
