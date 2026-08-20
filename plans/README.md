@@ -15,10 +15,16 @@
 3. `Verify` on each phase re-runs earlier phases' gates. Regressions surface at the next phase boundary rather than three phases later.
 4. If a gate fails, stop. Do not proceed and fix later — the whole point of the gates is that later work is worthless if an earlier layer is wrong.
 
-> **Audit status:** the plan set was independently audited on 2026-08-20. A critical
-> architectural defect and eight blocking defects were fixed; fourteen remain open.
-> **Read [`DEFECTS.md`](DEFECTS.md) before executing any phase.** Phases 3–9 have not
-> been audited yet and contain 43 placeholder test stubs.
+> **Audit status:** every file was independently audited on 2026-08-20, each auditor
+> given only a file path and told to refute it. **Every completed audit found blocking
+> problems; none returned SOUND.** 32 defects fixed, 22 open.
+>
+> **Read [`DEFECTS.md`](DEFECTS.md) before executing any phase.** Two things in it
+> matter more than the individual entries: four defects were introduced *while fixing
+> other defects*, and a large class of the tests as written **cannot fail**.
+>
+> Phase 7 was rewritten outright — its original architecture rested on an API that does
+> not exist. Phases 8 and 9 are still under audit.
 
 ## Progress
 
