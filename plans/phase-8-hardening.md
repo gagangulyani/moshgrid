@@ -63,19 +63,7 @@ Every later task uses this. It is a `Link` implementation that lies.
 **Interfaces:**
 - Consumes: `Link` from Phase 2, `FakeBus` and `Sim` from Phase 2 Task 6.
 - Produces: `class MaliciousLink implements Link` with `forgeFrame(overrides)`, `forgeAsNewIdentity(overrides)`, `replayLast(times)`, `truncateNext(bytes)`, `floodQueue(count)`, `impersonate(deviceId)`.
-- Also produces two deterministic test helpers used by the class, defined at the top of the same file:
-
-```typescript
-/** 32 zero bytes, base64 — a well-formed key that belongs to nobody. */
-export const FAKE_PUBKEY_B64 = 'A'.repeat(43);
-
-let fakeUuidCounter = 0;
-/** Deterministic frame ids so an attack that fails can be replayed exactly. */
-export function nextFakeUuid(): string {
-  const n = (fakeUuidCounter++).toString(16).padStart(12, '0');
-  return `00000000-0000-4000-8000-${n}`;
-}
-```
+- Also produces three deterministic helpers — `FAKE_PUBKEY_B64`, `FAKE_SIG_B64` and `nextFakeUuid()` — exported from the same file. They are written out in Step 3 alongside the class, not here: an earlier draft described them in this block only, and the class then referenced identifiers that existed nowhere in the source (`DEFECTS.md` B27).
 
 `forgeFrame` and `forgeAsNewIdentity` test **different** attacks and both are needed. The first sends a frame whose signature is wrong — tampering, caught at every hop. The second sends a cryptographically valid frame from a keypair nobody knows — the Sybil case, which must relay everywhere and be refused only at the destination. Conflating them is how a test suite ends up asserting the bug rather than the fix.
 
@@ -163,7 +151,27 @@ Expected: FAIL — cannot find module `../MaliciousLink`.
 // src/mesh/fake/MaliciousLink.ts
 import { FakeLink, type FakeBus } from './FakeLink';
 import { buildFrame, encodeFrame, type MeshFrame } from '../frame';
+import { createAccount } from '../../crypto/identity';
+import { deviceIdFromEd25519 } from '../../crypto/deviceId';
 import type { DeviceId } from '../types';
+
+/** 32 zero bytes, unpadded base64 — a well-formed key that belongs to nobody. */
+export const FAKE_PUBKEY_B64 = 'A'.repeat(43);
+
+/**
+ * An Ed25519 signature is 64 bytes. Unpadded base64 of 64 bytes is
+ * ceil(64 * 4 / 3) = 86 characters, not 88. 88 unpadded characters decode to
+ * 66 bytes and are rejected on length before any MAC check runs — which would
+ * make every "bad signature" test below pass for the wrong reason.
+ */
+export const FAKE_SIG_B64 = 'A'.repeat(86);
+
+let fakeUuidCounter = 0;
+/** Deterministic frame ids so an attack that fails can be replayed exactly. */
+export function nextFakeUuid(): string {
+  const n = (fakeUuidCounter++).toString(16).padStart(12, '0');
+  return `00000000-0000-4000-8000-${n}`;
+}
 
 type SendSpy = (bytes: Uint8Array) => void;
 
@@ -182,27 +190,36 @@ export class MaliciousLink extends FakeLink {
   onSend(spy: SendSpy): void { this.spies.push(spy); }
 
   /**
-   * Build a frame with arbitrary fields and a signature that will not verify.
-   * Used to test that tampering is caught — see forgeAsNewIdentity for the
-   * "valid frame from a stranger" case, which is a different attack.
+   * Build a frame with arbitrary fields and, by default, a signature that will
+   * not verify. Used to test that tampering is caught — see forgeAsNewIdentity
+   * for the "valid frame from a stranger" case, which is a different attack.
+   *
+   * `signFn` is overridable so a test can build the *same* frame with a real
+   * signature as a positive control. Without that control, a suite cannot tell
+   * "rejected because the signature was bad" from "rejected for some cheaper
+   * reason, and signature verification never ran at all".
    */
-  async forgeFrame(overrides: Partial<MeshFrame>): Promise<Uint8Array> {
+  async forgeFrame(
+    overrides: Partial<MeshFrame> & { signFn?: (bytes: Uint8Array) => Promise<string> },
+  ): Promise<Uint8Array> {
+    const { signFn, ...fields } = overrides;
     const base = await buildFrame({
-      origin: overrides.origin ?? 'f'.repeat(16),
-      originPubkey: overrides.originPubkey ?? FAKE_PUBKEY_B64,
-      destination: overrides.destination ?? 'f'.repeat(16),
-      payload: overrides.payload ?? new Uint8Array([0xde, 0xad]),
-      sequence: overrides.sequence ?? 1,
-      ttlMs: overrides.ttlMs ?? 60_000,
-      sprayL: overrides.copies ?? 8,
-      // 64 bytes base64-encodes to 88 chars: structurally valid, cryptographically wrong.
-      signFn: async () => 'A'.repeat(88),
+      origin: fields.origin ?? 'f'.repeat(16),
+      originPubkey: fields.originPubkey ?? FAKE_PUBKEY_B64,
+      destination: fields.destination ?? 'f'.repeat(16),
+      payload: fields.payload ?? new Uint8Array([0xde, 0xad]),
+      sequence: fields.sequence ?? 1,
+      ttlMs: fields.ttlMs ?? 60_000,
+      sprayL: fields.copies ?? 8,
+      // Structurally valid, cryptographically wrong — see FAKE_SIG_B64 above
+      // for why the length matters more than it looks.
+      signFn: signFn ?? (async () => FAKE_SIG_B64),
       idFn: () => nextFakeUuid(),
     });
     // payload is restored from `base` deliberately: buildFrame ran it through
     // padToBucket, and letting an override replace it would silently defeat
     // the size-bucket padding the frame format depends on.
-    return encodeFrame({ ...base, ...overrides, payload: base.payload });
+    return encodeFrame({ ...base, ...fields, payload: base.payload });
   }
 
   /**
@@ -296,22 +313,67 @@ import { FakeBus } from '../../fake/FakeLink';
 import { MaliciousLink } from '../../fake/MaliciousLink';
 import { RealMeshEngine } from '../../RealMeshEngine';
 import { DEFAULT_CONFIG } from '../../types';
+import { createAccount } from '../../../crypto/identity';
+import { deviceIdFromEd25519 } from '../../../crypto/deviceId';
+import { signableBytes, BUNDLE_VERSION, type ContactBundle } from '../../../crypto/bundle';
 
-const ALICE = 'a'.repeat(16);
 const BOB = 'b'.repeat(16);
 const EVE = 'e'.repeat(16);
 
+/**
+ * Alice is a REAL account that Bob has REALLY added as a contact.
+ *
+ * This matters more than it looks. `validateFrame` runs its checks in order,
+ * cheapest first, and a forged frame can die at any of them:
+ *
+ *   1. origin === deviceIdFromEd25519(originPubkey)   -> id_key_mismatch
+ *   2. originPubkey belongs to a known contact         -> unknown_contact
+ *   3. originSig verifies over the signable bytes      -> bad_signature   <- the one we mean
+ *
+ * If Alice is an invented id with a placeholder key, the frame dies at (1) and
+ * the test passes without step (3) ever running. That is exactly what the
+ * earlier draft did (`DEFECTS.md` B25): the named regression test for defect 3
+ * would have passed against a build with signature verification deleted.
+ *
+ * So the scene gives Eve everything she needs to get past (1) and (2) —
+ * Alice's real DeviceId and her real public key, both of which are public —
+ * and withholds only the private key. Signature verification is then the sole
+ * remaining thing standing between Eve and a delivered message.
+ */
 async function scene() {
   const sim = new Sim({ rangeMetres: 50, seed: 11 });
   const bus = new FakeBus(sim);
-  for (const id of [ALICE, BOB, EVE]) sim.addDevice(id, { x: 0, y: 0 });
+
+  const alice = createAccount();
+  const aliceKeys = alice.identityKeys();
+  const alicePub = aliceKeys.ed25519;
+  const aliceId = deviceIdFromEd25519(alicePub);
+
+  // A genuine self-signed bundle. addContact verifies it, so a hand-rolled
+  // object with a blank signature would be refused and Alice would silently
+  // not be a contact — putting us straight back to the vacuous-test problem.
+  const unsigned: ContactBundle = {
+    version: BUNDLE_VERSION,
+    ed25519Pub: alicePub,
+    curve25519Pub: aliceKeys.curve25519,
+    oneTimeKey: alice.oneTimeKeys(1)[0],
+    displayName: 'Alice',
+    signature: '',
+  };
+  const aliceBundle: ContactBundle = {
+    ...unsigned,
+    signature: alice.sign(signableBytes(unsigned)),
+  };
+
+  for (const id of [aliceId, BOB, EVE]) sim.addDevice(id, { x: 0, y: 0 });
 
   const bob = new RealMeshEngine(BOB, new (await import('../../fake/FakeLink')).FakeLink(bus));
   await bob.start(DEFAULT_CONFIG);
+  await bob.addContact(aliceBundle);
 
   const eve = new MaliciousLink(bus);
   await eve.start(EVE);
-  return { bob, eve, bus };
+  return { bob, eve, bus, alice, alicePub, aliceId };
 }
 
 /**
@@ -320,27 +382,51 @@ async function scene() {
  * says our mesh layer is not.
  */
 test('test_forged_routing_header_is_rejected', async () => {
-  const { bob, eve } = await scene();
+  const { bob, eve, alicePub, aliceId } = await scene();
   const received: unknown[] = [];
+  let drops: Record<string, number> = {};
   bob.observeMessages((e) => received.push(e));
+  bob.observeDiagnostics((d) => { drops = d.framesDropped; });
 
-  // Eve claims a frame came from Alice.
-  const forged = await eve.forgeFrame({ origin: ALICE, destination: BOB });
+  // Eve claims a frame came from Alice, using Alice's real (public) identity
+  // and a signature she cannot produce.
+  const forged = await eve.forgeFrame({
+    origin: aliceId,
+    originPubkey: alicePub,
+    destination: BOB,
+  });
   await eve.sendTo(BOB, forged);
   await new Promise((r) => setTimeout(r, 1000));
 
   expect(received).toEqual([]);
+
+  // The frame must be refused BY THE SIGNATURE CHECK, not by a cheaper one
+  // upstream of it. Without these three lines the test is vacuous.
+  expect(drops.bad_signature ?? 0).toBeGreaterThan(0);
+  expect(drops.id_key_mismatch ?? 0).toBe(0);
+  expect(drops.unknown_contact ?? 0).toBe(0);
 });
 
-test('a forged frame increments the bad_signature drop counter', async () => {
-  const { bob, eve } = await scene();
-  let drops: Record<string, number> = {};
-  bob.observeDiagnostics((d) => { drops = d.framesDropped; });
+test('the forgery test is not passing for a cheaper reason', async () => {
+  // Mutation guard. If signature verification is removed, the frame above has
+  // nothing left to stop it, so this asserts the positive control: the SAME
+  // frame with a genuine signature IS delivered. A build that drops both
+  // messages fails here; a build that delivers both fails the test above.
+  // Only a build that verifies signatures passes both.
+  const { bob, eve, alice, alicePub, aliceId } = await scene();
+  const received: unknown[] = [];
+  bob.observeMessages((e) => received.push(e));
 
-  await eve.sendTo(BOB, await eve.forgeFrame({ origin: ALICE, destination: BOB }));
+  const genuine = await eve.forgeFrame({
+    origin: aliceId,
+    originPubkey: alicePub,
+    destination: BOB,
+    signFn: async (bytes: Uint8Array) => alice.sign(bytes),
+  });
+  await eve.sendTo(BOB, genuine);
   await new Promise((r) => setTimeout(r, 1000));
 
-  expect(drops.bad_signature ?? 0).toBeGreaterThan(0);
+  expect(received).toHaveLength(1);
 });
 
 test('a frame from an unknown origin is RELAYED but never delivered', async () => {
@@ -372,12 +458,12 @@ test('a frame from an unknown origin is RELAYED but never delivered', async () =
 test('a frame whose origin id does not match its public key is dropped at every hop', async () => {
   // Binding origin to SHA-256(originPubkey) is what stops a valid keypair
   // being used to impersonate someone else's DeviceId.
-  const { bob, eve } = await scene();
+  const { bob, eve, aliceId } = await scene();
   let drops: Record<string, number> = {};
   bob.observeDiagnostics((d) => { drops = d.framesDropped; });
 
   await eve.sendTo(BOB, await eve.forgeAsNewIdentity({
-    origin: ALICE,          // claim Alice's id, sign with our own key
+    origin: aliceId,        // claim Alice's id, sign with our own key
     destination: BOB,
   }));
   await new Promise((r) => setTimeout(r, 1000));
@@ -386,51 +472,115 @@ test('a frame whose origin id does not match its public key is dropped at every 
 });
 
 test('tampering with the destination after signing is detected', async () => {
-  const { bob, eve } = await scene();
+  // Redirection is its own attack: Eve intercepts a frame Alice genuinely
+  // signed for Carol and rewrites the destination to Bob. Nothing about the
+  // origin is forged, so every identity check upstream of the signature
+  // passes — only the signature itself can catch this.
+  //
+  // An earlier draft "tested" this by calling forgeFrame with a bad signature
+  // and a comment claiming redirection. Nothing was redirected; it was the
+  // first test again under a second name, and the redirection path was
+  // never exercised.
+  const { bob, eve, alice, alicePub, aliceId } = await scene();
   const received: unknown[] = [];
+  let drops: Record<string, number> = {};
   bob.observeMessages((e) => received.push(e));
+  bob.observeDiagnostics((d) => { drops = d.framesDropped; });
 
-  // A frame legitimately signed for someone else, redirected to Bob.
-  const redirected = await eve.forgeFrame({ origin: ALICE, destination: BOB, sequence: 5 });
-  await eve.sendTo(BOB, redirected);
+  const { decodeFrame, encodeFrame } = await import('../../frame');
+  const CAROL = 'c'.repeat(16);
+
+  // Genuinely signed, for Carol.
+  const forCarol = decodeFrame(await eve.forgeFrame({
+    origin: aliceId,
+    originPubkey: alicePub,
+    destination: CAROL,
+    signFn: async (bytes: Uint8Array) => alice.sign(bytes),
+  }));
+
+  // Eve rewrites one field and forwards it. destination is inside the signed
+  // region, so this must not survive.
+  await eve.sendTo(BOB, encodeFrame({ ...forCarol, destination: BOB }));
   await new Promise((r) => setTimeout(r, 1000));
 
   expect(received).toEqual([]);
+  expect(drops.bad_signature ?? 0).toBeGreaterThan(0);
+  expect(drops.id_key_mismatch ?? 0).toBe(0);
+  expect(drops.unknown_contact ?? 0).toBe(0);
 });
 
 test('MUTABLE FIELDS CAN BE CHANGED WITHOUT INVALIDATING THE SIGNATURE', async () => {
   // hopCount and copies are deliberately outside the signature — a relay must
   // be able to increment them. This test pins that intent so nobody "fixes"
   // it by signing them and breaking all relaying.
-  const { eve } = await scene();
-  const original = await eve.forgeFrame({ origin: ALICE, destination: BOB, hopCount: 0 });
-  const bumped = await eve.forgeFrame({ origin: ALICE, destination: BOB, hopCount: 3 });
+  //
+  // It mutates ONE frame rather than building two. An earlier draft called
+  // forgeFrame twice and compared the results (`DEFECTS.md` B26): nextFakeUuid
+  // increments and createdAtMs is read from the clock, so the two frames
+  // differed in signed fields and the assertion failed — while appearing to
+  // test relay mutability. Two frames can never demonstrate this property;
+  // only a before/after on the same frame can.
+  const { eve, alicePub, aliceId } = await scene();
+  const { decodeFrame, encodeFrame, signableFrameBytes } = await import('../../frame');
 
-  const { decodeFrame, signableFrameBytes } = await import('../../frame');
-  expect(signableFrameBytes(decodeFrame(original)))
-    .toEqual(signableFrameBytes(decodeFrame(bumped)));
+  const original = decodeFrame(
+    await eve.forgeFrame({ origin: aliceId, originPubkey: alicePub, destination: BOB }),
+  );
+  const relayed = decodeFrame(
+    encodeFrame({ ...original, hopCount: original.hopCount + 3, copies: 1 }),
+  );
+
+  // Sanity: the mutation actually happened. Without this the test would pass
+  // if encode/decode quietly dropped the change.
+  expect(relayed.hopCount).toBe(original.hopCount + 3);
+  expect(relayed.copies).not.toBe(original.copies);
+
+  expect(signableFrameBytes(relayed)).toEqual(signableFrameBytes(original));
+  expect(relayed.originSig).toBe(original.originSig);
 });
 ```
 
 The last test is the counterweight to the rest. Mutable fields are outside the signature **on purpose**, and a future contributor reading only the forgery tests would reasonably conclude they should be signed. Pinning the intent stops a well-meant change from breaking every relay.
 
-- [ ] **Step 2: Run and watch them fail**
-
-Before the fix, `test_forged_routing_header_is_rejected` must actually **fail** — meaning the forged frame is accepted. If it passes on the first run, verify the harness is really sending by checking the spy count. A test that has never failed is not evidence.
+- [ ] **Step 2: Run them**
 
 ```bash
 npm test -- attacks/forgery
 ```
 
-- [ ] **Step 3: Confirm the production code already defends this.** Phase 2 Task 2 implemented `validateFrame` with signature verification at step 6. If these tests pass without any production change, that is the correct outcome — record it. If they do not, fix `validateFrame`, not the test.
+These tests attack code Phase 2 already wrote, so unlike every other task in this
+project **they are expected to pass on the first run.** `validateFrame` implemented
+signature verification at step 6; if the suite goes green immediately, that is the
+correct outcome, and the earlier draft's instruction to watch it fail first was simply
+wrong for this task (`DEFECTS.md` B30). Red-first applies when the test drives new code.
+Here it does not.
 
-- [ ] **Step 4: Run and watch them pass**
+That leaves the harder question: a suite that has never been red is not evidence of
+anything. Step 3 is how this task earns its green instead of assuming it.
 
-```bash
-npm test -- attacks/forgery
-```
+- [ ] **Step 3: Mutation-test the suite. This step is the actual deliverable.**
 
-Expected: 5 passed.
+Comment out the signature check in `validateFrame` step 6, re-run, and record what
+happens. Required outcome:
+
+| Test | Must go |
+|---|---|
+| `test_forged_routing_header_is_rejected` | **RED** |
+| `tampering with the destination after signing is detected` | **RED** |
+| `the forgery test is not passing for a cheaper reason` | stays green |
+
+**If the first two stay green with signature verification disabled, they are worthless
+and the task is not done** — that was the state of the earlier draft (`DEFECTS.md` B25).
+Restore the check and confirm green again.
+
+Do the same for the identity binding: make `validateFrame` skip the
+`origin === deviceIdFromEd25519(originPubkey)` comparison and confirm the
+`id_key_mismatch` test goes red while the others do not.
+
+- [ ] **Step 4: Record the mutation results** in the task's commit message. A claim that
+defect 3 is closed rests entirely on this step, not on the green tick.
+
+Expected: 6 passed, and both mutations reproduce the table above.
 
 - [ ] **Step 5: Commit**
 
@@ -652,21 +802,22 @@ Expected: no crashes in 10 minutes. This fuzzes **our wrapper**, not vodozemac's
 - [ ] `npm test -- fuzz/` → 20,000 runs, no failures
 - [ ] `cd android && ./gradlew :moshgrid-core:testDebugUnitTest` → pass, including both fuzz tests
 - [ ] `cd crypto && cargo fuzz run decrypt -- -max_total_time=600` → no crashes
-- [ ] **`test_forged_routing_header_is_rejected` passes, and its git history shows it failing first** ← the gate
+- [ ] **`test_forged_routing_header_is_rejected` passes AND goes red when signature verification is disabled** ← the gate
+- [ ] `npm test -- attacks/forgery` → 6 passed, mutation results recorded in the commit message
 - [ ] `docs/threat-model.md` exists, every defended row names a real test
 - [ ] Flood-resistance CPU and battery cost recorded in the ledger
 
 ## Re-check before moving on
 
 - [ ] Re-run Phases 0–7 exit gates. All still green — hardening must not have broken delivery.
-- [ ] **Confirm each attack test genuinely failed first.** `git log -p src/mesh/__tests__/attacks/` should show the test added before any fix. If a test was added already-passing, it is not evidence and must be re-derived against an unpatched build.
+- [ ] **Confirm each attack test can fail.** Most of these attack code that already exists, so "failed first" is the wrong standard and demanding it produces theatre. The right standard is mutation: for each defended row in the threat model, break the specific defence, confirm the named test goes red, and restore. A test that stays green under its own mutation is not evidence and must be rewritten.
 - [ ] Two-phone flood test: one phone floods, the other must stay usable — messages still send, UI stays responsive.
 - [ ] Re-measure battery under flood. Compare against the Phase 5 baseline and record the delta.
 - [ ] Confirm rate limiting is per-peer: a flooding phone must not stop a third, innocent phone from delivering.
 
 ## Updating the index
 
-- [ ] Tick defect 3 in the [defect tracker](README.md#defect-regression-tracker) once `test_forged_routing_header_is_rejected` passes
+- [ ] Tick defect 3 in the [defect tracker](README.md#defect-regression-tracker) once `test_forged_routing_header_is_rejected` passes **and its mutation result is recorded**. Passing alone is what produced the false green the first time.
 - [ ] Add **Flood CPU cost** and **Seen-set memory at 10k frames** rows to the ledger
 - [ ] Set Phase 8 to `☑ Done` in [Progress](README.md#progress)
 
