@@ -15,5 +15,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "bitchat-android"
 include(":app")
-include(":wear")
+// include(":wear")  MoshGrid: Wear OS app not shipped
 // Using published Arti AAR; local module not included

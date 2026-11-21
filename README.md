@@ -1,3 +1,13 @@
+# MoshGrid
+
+Find and message your friends at festivals when the phone network dies. A friends-only fork of bitchat-android (GPL-3.0, see NOTICE).
+
+Design: `docs/superpowers/specs/2026-11-22-moshgrid-bitchat-fork-design.md`. Plan: `docs/superpowers/plans/2026-11-22-moshgrid-fork-v1.md`.
+
+---
+
+Upstream README follows.
+
 <img width="256" height="256" alt="icon_128x128@2x" src="https://github.com/user-attachments/assets/90133f83-b4f6-41c6-aab9-25d0859d2a47" />
 
 ## bitchat for Android
