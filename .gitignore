@@ -1,50 +1,92 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
-node_modules/
-
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-/android
-
-# Gradle build output for local modules
-modules/*/android/build/
-modules/*/android/.gradle/
+# Android Studio / IntelliJ
+.idea/
+*.iml
+build/
+!*/build/filtered-manifest/
+!*/build/generated/
+!*/build/intermediates/
+local.properties
 .gradle/
+.kotlin/
+captures/
+.externalNativeBuild/
+debug_keystore/
+*.keystore
+debug.keystore
+app/release
 
-# Rust
-crypto/target/
-modules/*/android/src/main/jniLibs/
+# Gradle
+/build/
+/.gradle/
+/captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Mac
+.DS_Store
+*.swp
+*~
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+
+# Linters
+.lint/
+
+# Python test tooling
+**/__pycache__/
+*.py[cod]
+release-gate-results/
+
+# Other
+*.log
+.cxx/
+# Gradle/Android build directories (but not tools/arti-build/)
+**/build/
+!tools/arti-build/
+out/
+gen/
+*~
+*.swp
+*.lock
+!tools/arti-build/Cargo.lock
+.goosehints
+
+# Google services
+google-services.json
+
+# Keystore files
+*.jks
+*.keystore
+
+# Arti build artifacts (cloned repo and Rust build cache)
+tools/arti-build/.arti-source/
+tools/arti-build/target/
+.reproducible-build/
+
+# JVM heap dumps (a Gradle daemon OOM drops these in the repo root)
+*.hprof
+
+# MoshGrid: leftovers from the archived Expo app (tag expo-archive)
+node_modules/
+/android/
+/modules/
+.expo/
+
+# MoshGrid: brainstorming companion files
+.superpowers/
+
+# MoshGrid: never commit signing keys
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
