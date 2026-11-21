@@ -1,28 +1,45 @@
 # MoshGrid V1 — Design Specification
 
-**Status:** approved for planning
-**Date:** 2026-08-20
+**Status:** approved for planning; scope revised 2026-11-22 (§0)
+**Date:** 2026-08-20, revised 2026-11-22
 **Scope:** V1 only. Later scope is listed under Non-Goals with the phase that revisits it.
+**Screens:** the design canvas "MoshGrid — Brand & App Design" (App screens page). The board "V1 gaps, Help alerts that work in a crowd, meeting points" holds the screens added for this revision.
 
 ---
+
+## 0. Scope revision, 2026-11-22
+
+The owner set the V1 core as: **chat, network switching between devices, meeting points, the map, location sharing, and finding each other.** Help alerts were then added to the core. Everything else in the designs (lineup and plan, festival packs beyond the map, groups, the platform console, reporting, crowd counts, themes beyond the default) is secondary and not V1.
+
+What changed in this document:
+
+| Area | Change | Section |
+|---|---|---|
+| Message status | Adds **seen**, and the `sent` state now records which network carried it. Delivered and seen are encrypted receipts; the plaintext ack frame is retired | §6.7 |
+| Meeting points | New. Set from any chat or the map, sent as an encrypted message, no festival pack needed | §6.8 |
+| Help alerts | Moved from non-goal into V1: to friends, and optionally to people nearby | §6.9 |
+| Network switching | **Decided:** internet through a MoshGrid relay server when it works, Bluetooth mesh always; each can be turned off by the user, and with internet off the app is fully offline | §6.10 |
+| Data model, phases, risks | Updated to match | §7, §9, §10 |
 
 ## 1. What we are building
 
 An Android app that lets people find and message their friends at a festival **when the cell network is dead**, by relaying messages phone-to-phone over Bluetooth Low Energy.
 
-V1 delivers three things, on two or more physical Android phones, with no server anywhere:
+V1 delivers these, on two or more physical Android phones. Messages go over the internet through a relay server when the phone has a connection and the user allows it, and phone to phone over Bluetooth otherwise (§6.10). **Everything below must still work with internet turned off**:
 
 1. **Identity and contacts** — generate a keypair on device, add a friend by scanning their QR code.
-2. **Encrypted 1:1 chat** — text messages, end-to-end encrypted, delivered over the BLE mesh with store-and-forward when the recipient is out of range.
-3. **Find your friend** — who is in range right now, and which direction and how far away they are, on a radar view and on an offline map.
+2. **Encrypted 1:1 chat** — text messages, end-to-end encrypted, delivered over the internet or the BLE mesh, whichever works, with store-and-forward when the recipient is out of reach. Every outgoing message shows its status: waiting, sent, delivered, seen, or not sent (§6.7).
+3. **Find your friend** — who is in range right now, and which direction and how far away they are, on a radar view and on an offline map. Location sharing is per friend and stops by itself.
+4. **Meeting points** — pick a spot (where I am, on the map, or a named place) and send it to one or more friends, who get an arrow to it (§6.8).
+5. **Help alerts** — ask friends for help, and optionally let people nearby find you, with what to look for and the nearest medical point (§6.9).
 
 ## 2. Non-goals for V1
 
 | Deferred | Why | Revisited in |
 |---|---|---|
 | iOS | No test device available. A backgrounded iPhone's service UUIDs sit in an overflow area Android cannot see, and `CBPeripheralManager` cannot advertise manufacturer data at all — so iOS cannot be a reliable relay. See §3.4 | Phase 9 |
-| Backend server, accounts, push | Competes with mesh work; every V1 feature works without it | Post-V1 |
-| Medical dispatch SoS | Safety-critical and regulated; needs a signed medical provider and a proven mesh first | Own spec cycle |
+| Accounts, push, server features beyond relaying | V1 has a relay server (§6.10) but no accounts: a phone proves it owns its `DeviceId` by signing. Push notifications, publishing festivals and voting (§12.2) stay out of V1 | Post-V1 |
+| Medical dispatch SoS | Safety-critical and regulated; needs a signed medical provider and a proven mesh first. **Not the same as Help alerts (§6.9)**, which are peer-to-peer and in V1: nothing in V1 dispatches staff or medics | Own spec cycle |
 | Super-node relay hardware | Independent physical product | Own spec cycle |
 | Festival schedule, weather | Independent of the mesh; proves nothing about it | Post-V1 |
 | Group chat | 1:1 first. Group ratchets are a separate design | Post-V1 |
@@ -230,7 +247,8 @@ The signature is verified before the contact is stored. A bundle failing verific
 MeshFrame {
   // — signed, immutable —
   version:        u8
-  frame_type:     u8       // 1=data 2=ack 3=digest_req 4=digest_resp
+  frame_type:     u8       // 1=data 2=reserved (was ack, §6.7) 3=digest_req 4=digest_resp
+                           // 5=help_broadcast 6=help_cancel (§6.9)
   frame_id:       [u8;16]  // CSPRNG, dedup key
   origin:         [u8;8]   // DeviceId of sender
   origin_pubkey:  [u8;32]  // Ed25519 public key of sender — see below
@@ -319,7 +337,114 @@ spray_decision(copies_held, peer_id, destination_id):
 
 `SPRAY_L` defaults to **8** and is configurable. The PDF's 32 ("higher than the standard 16") is doubly wrong: *L* is a free parameter in Spyropoulos et al., not a standard constant, and a higher *L* costs battery and storage on every device in the crowd. Phase 4 sweeps *L* in the simulator and picks the value from measured delivery rate against overhead.
 
-SoS epidemic flooding is **not** in V1 — it belongs with the deferred medical dispatch work.
+SoS epidemic flooding to the whole crowd is **not** in V1. Help alerts to people nearby (§6.9) use a hop-limited broadcast, which is a different, bounded thing.
+
+### 6.7 Message content, status and receipts
+
+Everything a friend sends a friend travels as a `data` frame. Inside the Olm ciphertext, the plaintext is a small typed record:
+
+```
+Content {
+  kind:        u8     // 1=text 2=receipt 3=location 4=meet 5=meet_reply 6=help (to a friend)
+  message_id:  [u8;16]
+  body:        kind-specific (below)
+}
+receipt    { of: [message_id], level: delivered | seen }
+location   { lat, lon, accuracy_m, fix_at_ms, share_until_ms }
+meet       { meet_id, op: set | move | clear, lat, lon, name?: string ≤ 48 bytes, set_at_ms }
+meet_reply { meet_id, reply: on_my_way | elsewhere }
+```
+
+Because the kind is inside the ciphertext, and every frame is padded to a size bucket (§6.4), **a relay cannot tell a receipt from a message.** That is why receipts are not their own frame type.
+
+**The plaintext `ack` frame (type 2) is retired.** It told every relay on the return path that the destination had received something, and when. A `seen` receipt sent that way would also tell them when the person opened the chat. Type 2 stays reserved so old frames are dropped, not misread.
+
+**Message states:**
+
+| State | Meaning | Shown as |
+|---|---|---|
+| `queued` | On this phone, no route yet | Clock, amber: “Waiting to send” |
+| `sent` | Handed to at least one other phone, or stored by the relay server (§6.10). `via` records which | One tick, grey: “Sent through phones nearby” / “Sent over the internet” |
+| `delivered` | A `delivered` receipt arrived | Two ticks, grey |
+| `seen` | A `seen` receipt arrived | Two ticks, accent colour, and the word “Seen” |
+| `failed` | TTL expired with no `delivered` receipt, or sending was refused | Red mark: “Not sent. Tap to try again” |
+
+States only move forward. A late `delivered` after `seen` is ignored.
+
+**Seen receipts are reciprocal and on by default.** Turning them off stops sending them and stops showing them, so nobody gets other people's read state while hiding their own. `delivered` receipts are always sent; without them the sender cannot tell a lost message from a slow one.
+
+The chat list shows the last message with the same icon. Status is never colour alone: icon plus words, read out by screen readers.
+
+### 6.8 Meeting points
+
+A meeting point is a `meet` record (§6.7) sent in a 1:1 chat. Sending one to several friends sends one record per chat, with the same `meet_id`. It needs no festival pack: a pack only adds named places to pick from.
+
+- **One live meeting point per chat.** `set` replaces any earlier one, `move` changes it, `clear` removes it. When two arrive for the same `meet_id`, the one with the later `set_at_ms` wins, ties broken by the higher `DeviceId`.
+- Ways to set one: **Meet where I am** (current fix), **pick a spot on the map** (pin under a fixed crosshair, or a long-press anywhere on the map), or **pick a named place** if the festival map has them.
+- The receiver gets **Find it** (arrow and distance, as for a friend), **On my way** (sends `meet_reply` and starts location sharing with that friend, for the default sharing duration) and **Somewhere else** (opens the same picker and replies with a new `set`).
+- The live meeting point is pinned at the top of the chat and at the top of the Find list, and shows on the map and the compass.
+- It works offline: the map is local (§3.6), and the arrow needs only two fixes.
+
+### 6.9 Help alerts
+
+Two audiences, two mechanisms.
+
+**To friends.** A `help` record (§6.7) sent to each friend in a normal encrypted frame, plus location updates while the alert is on. Friends see who it is. This is ordinary 1:1 messaging with a higher priority in the send queue.
+
+**To people nearby (opt-in, per alert).** A `help_broadcast` frame (type 5), readable by any MoshGrid phone. It must not reveal who sent it, so it is **signed with a fresh one-time key made for this alert**, not the person's identity key. §3.3's self-contained verification still holds: the frame carries that one-time public key and is signed by it, so relays can check it was not altered. Nothing links it to the person's code, so strangers do not learn who it is, and holders of the person's code cannot confirm it is them (the problem recorded in §10 does not extend to Help).
+
+```
+help_broadcast payload {
+  alert_id:      [u8;16]
+  lat, lon, accuracy_m
+  updated_at_ms
+  expires_at_ms           // at most 15 minutes after the alert started
+  look_for?:     string   // ≤ 96 bytes: “red top, cap, by the bar”
+  responders:    u8       // how many people said they are going, for the sender's screen
+}
+```
+
+- **Reach is bounded.** It is relayed only a small number of hops (a constant, chosen by simulation, not guessed), and expires with the alert. It is never sprayed crowd-wide.
+- **Stopping it.** “Only friends again” or ending the alert sends `help_cancel` (type 6), signed with the same one-time key. Receivers remove the spot from their screens.
+- **Getting found in a crowd.** The sender can add what to look for, and turn the whole screen into a steady bright colour (it never flashes), with the torch on. A helper sees the arrow, the distance, and what to look for, and can ask the sender to light their screen.
+- **Nearest help.** Both sides see the nearest medical and welfare points when the festival map has them, and always a “Call 112” option. Without a map: move toward a stage or crowd.
+- **Limits.** One alert per 10 minutes, 3 per hour, 5 per day, each ending after 15 minutes (the rules on the Help alert design board). These are enforced on the sending phone, so a modified app can ignore them. See §10.
+- **Who answers.** Responding is optional and anonymous. The helper's screen says that if it doesn't feel safe to go, they should tell a steward or security instead.
+
+### 6.10 Network switching: internet and Bluetooth
+
+Decided 2026-11-22. Two links carry the **same signed, encrypted frames** (§6.3):
+
+| Link | Carries frames | Used when |
+|---|---|---|
+| `InternetLink` | To and from the MoshGrid relay server | The user allows internet **and** the phone has a working connection |
+| `BleLink` | Phone to phone (§6.6) | The user allows phones nearby **and** Bluetooth is on and permitted |
+
+**The user decides which links may be used**, first during onboarding (“How should messages travel?”, after permissions) and any time later on the Network screen: two checkboxes, both ticked by default.
+
+- **Internet unticked = offline only.** MoshGrid makes no network connection at all: no uploads, no inbox checks, nothing to the server. Every feature still works over Bluetooth.
+- **Phones nearby unticked = internet only.** With no connection, messages wait.
+- **At least one stays ticked.** Unticking the last one is refused with a message, because a phone with no link can only queue.
+
+**Switching is automatic and needs no user action.** The engine listens to the operating system's connectivity changes and checks the server is reachable; Bluetooth availability comes from the link layer.
+
+**Sending.** The frame is built once.
+
+1. If `InternetLink` is usable, upload it. When the server confirms it is stored, the message becomes `sent` with `via = internet`.
+2. If `BleLink` is allowed, the frame also enters the spray queue (§6.6). After a successful upload it is **held back for a grace period** before spraying; a `delivered` receipt inside that period removes it from the queue, so the crowd's capacity isn't spent on messages the internet already delivered. If the upload fails or there is no connection, it sprays at once. The grace period is a configurable constant chosen by measurement in Phase 12, not guessed here.
+3. Receipts (§6.7) travel the same way.
+
+**Receiving.** With internet usable, the phone keeps a connection to the server and collects frames addressed to it. Bluetooth keeps listening whenever it is allowed. **One seen-set covers both links**, so a frame that arrives twice is processed once (§6.3, step 5).
+
+**Bridging.** If the user passes on messages for others and internet is usable, frames carried for other people are also uploaded. A message can then cross from the crowd to the internet at any phone with signal. Relays still see only ciphertext.
+
+**The relay server:**
+
+- Stores frames by destination `DeviceId`, deletes each on delivery or when its TTL ends.
+- **No accounts.** To collect its frames, a phone signs a fresh server challenge with its Ed25519 key; because `DeviceId` is the hash of that key (§6.1), the server needs no registration step.
+- Validates frames with the same checks 1–6 as any relay (§6.3) before storing them, and rate-limits per connection.
+- Sees, and must be treated as seeing: origin public key, destination id, time, size bucket, and the phone's IP address. **Never** message content. Recorded in §10.
+- Its dependencies follow the same licensing policy (§3.1).
 
 ## 7. Data model
 
@@ -330,7 +455,9 @@ SQLite via `expo-sqlite`. WatermelonDB was rejected as an unnecessary abstractio
 | `identity` | Pickled vodozemac account | One row. Pickle key in Android Keystore |
 | `contacts` | Ed25519 + Curve25519 keys, display name, DeviceId | Signature verified before insert |
 | `sessions` | Pickled Olm sessions, keyed by `session_id` with a `device_id` index | **Not one row per contact.** Olm routinely yields several concurrent sessions for one device — simultaneous initiation, or an inbound pre-key message arriving while an outbound session exists. Keying on `device_id` would let a newer session overwrite an older one, making every frame still in flight under the old ratchet permanently undecryptable: precisely the hours-delayed case §3.2 exists to support. Decrypt by trying each session for the device |
-| `messages` | Plaintext body, direction, state, timestamps | State: queued → sent → delivered → failed |
+| `messages` | Plaintext body, `kind` (§6.7), direction, state, `via`, timestamps | State: queued → sent → delivered → seen; or failed (§6.7). Receipts update the row they refer to and are not stored as messages |
+| `meeting_points` | `meet_id`, contact `device_id`, lat, lon, name, set_by, set_at, cleared_at | One live row per chat (§6.8) |
+| `help_alerts` | Own and received alerts: `alert_id`, one-time public key, location, `look_for`, expiry | Own one-time private key is deleted when the alert ends. Received alerts are deleted at expiry |
 | `frames` | Spray queue: frame bytes, copies, expiry | Evicted by TTL and by capacity |
 | `seen_frames` | Frame IDs for dedup, with expiry | Bounded ring, sized in Phase 4 |
 
@@ -369,6 +496,16 @@ Each phase ends in something visible on a screen. Phases 0–2 need no Bluetooth
 | 7 | Offline map | MBTiles basemap with live pins in aeroplane mode | 2 |
 | 8 | Hardening | Attack suite and fuzzers green | 2 |
 | 9 | iOS | Deferred until a device exists | — |
+| 10 | Meeting points | Set a spot from a chat or the map; friend gets an arrow; works in aeroplane mode | 2 |
+| 11 | Help alerts | Friends get the alert; a stranger's phone shows an anonymous spot, what to look for, and the nearest medical point | 2–3 |
+| 12 | Internet relay and switching | Same chat works over the server with signal and over Bluetooth without; untick internet and nothing touches the network | 2 |
+
+**Changes to existing phases from the 2026-11-22 revision** (the plan files have not been updated yet):
+
+- **Phase 2:** `MessageState` gains `seen`; messages carry `via`; delivery uses encrypted receipts (§6.7), not a type-2 ack frame; the chat list shows the last message's status; the Seen setting.
+- **Phase 4:** the “ack propagates back” test becomes “a delivered receipt propagates back”.
+- **Phase 6:** location sharing must also carry meeting-point fixes (§6.8).
+- **Phase 7:** long-press on the map opens the meeting-point sheet.
 
 ## 10. Open risks
 
@@ -385,6 +522,11 @@ Each phase ends in something visible on a screen. Phases 0–2 need no Bluetooth
 | Bloom digest hashes are non-cryptographic and the digest is public | Medium | Medium | An attacker can grind frame ids to force collisions and suppress sync. Use SipHash-2-4 with distinct keys, or state the exposure explicitly (§6.5) |
 | UniFFI is MPL-2.0, outside the stated permissive allow-list | Certain | Low | **Decided:** MPL-2.0 is file-level copyleft and does not affect a closed product that merely links it. Added to the `cargo-deny` allow-list with this rationale rather than discovered at CI time |
 | Native Expo modules (`expo-sqlite`, `expo-crypto`) cannot run under jest | Certain | High | Storage and hashing are accessed through injected interfaces so tests run against Node implementations; native modules are used only in production wiring |
+| **Fake Help alerts from people nearby** — rate limits are enforced on the sending phone only | High | Medium | A modified app can ignore them. Bounded by the hop limit, the 15-minute expiry and per-peer rate limiting on relays (Phase 8). Receivers can mute a stranger's alerts for 24 hours. Reporting is a server feature outside the V1 core |
+| **A Help alert tells people nearby where a vulnerable person is** | Certain | High | Opt-in per alert, never the default; no name; one-time key so it cannot be linked to the person; “Only friends again” without ending the alert; ends after 15 minutes |
+| **Help alerts reach few people early on** — strangers can only help if they run MoshGrid in Bluetooth range | High | High | The alert keeps retrying and is relayed when a phone comes in range; the sender always sees the nearest medical point and “Call 112”. Measure real reach in Phase 11 rather than promise it |
+| **The relay server sees who talks to whom, and when** — origin key, destination, timing and IP for every frame it handles | Certain | High | Content stays end-to-end encrypted. The server keeps frames only until delivery or TTL and keeps no logs beyond what abuse limits need. Users who don't accept this can untick internet and stay fully offline (§6.10). Disclosed on the About page |
+| **Seen receipts leak reading habits** | Low | Low | Sent inside the ciphertext, indistinguishable from messages to relays (§6.7). Reciprocal off switch |
 
 ## 11. Audit history
 
@@ -393,3 +535,17 @@ This specification was audited on 2026-08-20 by independent reviewers given only
 The fix is the two-level trust model now documented in §6.3: the public key travels inside the signed region, integrity is verified everywhere, authenticity only at the destination.
 
 Recording this here because the same discipline that caught it is the discipline this document was written to enforce: **a specific, confident, plausible claim that nobody checked is exactly the failure mode of the source PDFs** (§4). Being the corrected document did not make this one immune.
+
+## 12. Open decisions
+
+### 12.1 Network switching — decided 2026-11-22
+
+Option A was chosen: internet through a relay server when it works, Bluetooth mesh always, with each link switchable by the user and a fully offline mode. Specified in §6.10. Options B (Wi-Fi Direct between phones) and C (both) were not chosen; B can be added later as a third link without changing frames.
+
+### 12.2 Festivals added by people, shared publicly and rated — needs a server
+
+Requested 2026-11-22: people can add a festival themselves (name, dates, place, lineup, and an uploaded image such as the poster or site map), publish it so others can reuse it, and up- or down-vote it, with festivals listed by city and sorted by votes.
+
+Publishing, voting and a city list need a shared server. V1 now has one (§6.10), but only as a relay; this feature is still **not** in the V1 core (§0). What can ship without a server: adding a festival for yourself, and sharing it with friends as a message.
+
+Open questions for when it is planned: who can edit a published festival; how a vote is limited to one per person without accounts (one per identity key is cheap to fake, see the Sybil risk in §10); and how published festivals are moderated (the platform console designs cover removing scam festivals).

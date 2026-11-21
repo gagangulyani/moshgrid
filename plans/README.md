@@ -33,6 +33,13 @@
 > What is left is mostly unwritten test bodies (B12, B31) and known gaps, chief among them
 > **B23: replay protection is specified but not implemented.**
 
+> **Scope revised 2026-11-22** (spec §0). V1 core: chat with full message status
+> (waiting, sent, delivered, seen, not sent), network switching, meeting points, the map,
+> location sharing, finding each other, and Help alerts. The phase files below predate this
+> and **have not been updated yet**. Spec §9 lists what changes in Phases 2, 4, 6 and 7, and
+> adds Phases 10 (meeting points) and 11 (Help alerts), which have no plan file yet.
+> **Network switching cannot be planned until spec §12.1 is decided.**
+
 ## Progress
 
 | # | Phase | Status | Devices | Visible at the end |
@@ -47,6 +54,9 @@
 | 7 | [Offline map](phase-7-offline-map.md) | ☐ Not started | 2 | MBTiles basemap with live pins in aeroplane mode |
 | 8 | [Hardening](phase-8-hardening.md) | ☐ Not started | 2 | Attack suite and fuzzers green |
 | 9 | [iOS](phase-9-ios.md) | ☐ Blocked | — | Deferred until an iOS device exists |
+| 10 | Meeting points (no plan file yet) | ☐ Not started | 2 | Set a spot from a chat or the map; friend gets an arrow; works in aeroplane mode |
+| 11 | Help alerts (no plan file yet) | ☐ Not started | 2–3 | Friends get the alert; a stranger's phone shows an anonymous spot and what to look for |
+| — | Network switching | ☐ Blocked | — | Waiting on spec §12.1 |
 
 Status values: `☐ Not started` · `◐ In progress` · `☑ Done` · `☐ Blocked`
 
