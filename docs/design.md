@@ -1,3 +1,5 @@
+> **Superseded for V1** by [`docs/superpowers/specs/2026-11-22-moshgrid-bitchat-fork-design.md`](superpowers/specs/2026-11-22-moshgrid-bitchat-fork-design.md) (bitchat-android fork). Kept for reference; the Expo code it describes is under git tag `expo-archive`.
+
 # MoshGrid V1 — Design Specification
 
 **Status:** approved for planning; scope revised 2026-11-22 (§0)

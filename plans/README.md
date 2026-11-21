@@ -1,3 +1,5 @@
+> **Superseded for V1** by [`docs/superpowers/specs/2026-11-22-moshgrid-bitchat-fork-design.md`](../docs/superpowers/specs/2026-11-22-moshgrid-bitchat-fork-design.md) (bitchat-android fork). Kept for reference; the Expo code it describes is under git tag `expo-archive`.
+
 # MoshGrid V1 — Implementation Index
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement these plans task-by-task. All steps use `- [ ]` checkbox syntax for tracking.
