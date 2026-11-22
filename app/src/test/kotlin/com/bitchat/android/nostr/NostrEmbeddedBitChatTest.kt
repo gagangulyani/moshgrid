@@ -72,7 +72,7 @@ class NostrEmbeddedBitChatTest {
     }
 
     private fun decode(embedded: String?): BitchatPacket {
-        val content = requireNotNull(embedded).removePrefix("bitchat1:")
+        val content = requireNotNull(embedded).removePrefix(NostrEmbeddedBitChat.PREFIX)
         return requireNotNull(BitchatPacket.fromBinaryData(Base64.getUrlDecoder().decode(content)))
     }
 }

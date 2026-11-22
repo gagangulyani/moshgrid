@@ -17,6 +17,9 @@ import java.util.*
 object NostrEmbeddedBitChat {
     
     private const val TAG = "NostrEmbeddedBitChat"
+
+    /** Prefix of a MoshGrid packet embedded in a Nostr DM. Differs from Bitchat's `bitchat1:` so the networks stay separate. */
+    const val PREFIX = "moshgrid1:"
     private const val SENDER_ID_SIZE = 8
     private val secureRandom = SecureRandom()
     
@@ -54,7 +57,7 @@ object NostrEmbeddedBitChat {
             )
             
             val data = packet.toBinaryData() ?: return null
-            return "bitchat1:" + base64URLEncode(data)
+            return PREFIX + base64URLEncode(data)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to encode PM for Nostr: ${e.message}")
             return null
@@ -94,7 +97,7 @@ object NostrEmbeddedBitChat {
             )
             
             val data = packet.toBinaryData() ?: return null
-            return "bitchat1:" + base64URLEncode(data)
+            return PREFIX + base64URLEncode(data)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to encode ACK for Nostr: ${e.message}")
             return null
@@ -131,7 +134,7 @@ object NostrEmbeddedBitChat {
             )
             
             val data = packet.toBinaryData() ?: return null
-            return "bitchat1:" + base64URLEncode(data)
+            return PREFIX + base64URLEncode(data)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to encode ACK for Nostr (no recipient): ${e.message}")
             return null
@@ -166,7 +169,7 @@ object NostrEmbeddedBitChat {
             )
             
             val data = packet.toBinaryData() ?: return null
-            return "bitchat1:" + base64URLEncode(data)
+            return PREFIX + base64URLEncode(data)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to encode PM for Nostr (no recipient): ${e.message}")
             return null

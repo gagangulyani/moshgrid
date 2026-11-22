@@ -33,7 +33,7 @@ android {
     if (releaseUiTests) testBuildType = "release"
 
     defaultConfig {
-        applicationId = "com.bitchat.droid"
+        applicationId = "com.moshgrid.android"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 42

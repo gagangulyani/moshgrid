@@ -33,7 +33,7 @@ adb -s "$scanner_emulator" install -r app/build/outputs/apk/androidTest/release/
 scanner_evidence="$(mktemp -d "${TMPDIR:-/tmp}/scanner-release.XXXXXX")"
 chmod 700 "$scanner_evidence"
 adb -s "$scanner_emulator" shell am instrument -w -r \
-    com.bitchat.droid.test/com.bitchat.android.ui.ReleaseScannerTestRunner \
+    com.moshgrid.android.test/com.bitchat.android.ui.ReleaseScannerTestRunner \
     > "$scanner_evidence/result.txt"
 cat "$scanner_evidence/result.txt"
 # adb itself exits successfully even when instrumentation tests fail.

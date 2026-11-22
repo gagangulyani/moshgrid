@@ -19,26 +19,27 @@ import androidx.compose.ui.platform.LocalView
 
 // Standard UI semantics live in Material so stock components and custom Bitchat composables
 // share one source of truth. LocalBitchatPalette below only supplies app-specific extra colors.
+// MoshGrid palette (design canvas "Signal direction, rave colours"): acid #C6FF3D, cyan #3DF2FF, red #E8222B.
 internal val DarkBitchatColorScheme = darkColorScheme(
-    primary = Color(0xFF32D74B),
+    primary = Color(0xFFC6FF3D),
     onPrimary = Color.Black,
-    primaryContainer = Color(0xFF163D1D),
-    onPrimaryContainer = Color(0xFFB8F5C1),
-    secondary = Color(0xFF0A84FF),
+    primaryContainer = Color(0xFF2C3A0E),
+    onPrimaryContainer = Color(0xFFE6FFB0),
+    secondary = Color(0xFF3DF2FF),
     onSecondary = Color.Black,
-    secondaryContainer = Color(0xFF082E54),
-    onSecondaryContainer = Color(0xFFC2E0FF),
+    secondaryContainer = Color(0xFF0B3A3D),
+    onSecondaryContainer = Color(0xFFB8FBFF),
     tertiary = DarkBitchatPalette.accentOrange,
     onTertiary = Color.Black,
     background = Color(0xFF000000),
     onBackground = Color(0xFFF5F5F5),
-    surface = Color(0xFF0E150E),
+    surface = Color(0xFF141414),
     onSurface = Color(0xFFF5F5F5),
-    surfaceVariant = Color(0xFF182118),
-    onSurfaceVariant = Color(0xFF9AA69A),
-    outline = Color(0xFF2A3A2A),
-    outlineVariant = Color(0xFF1C271C),
-    error = Color(0xFFFF453A),
+    surfaceVariant = Color(0xFF1F1F1F),
+    onSurfaceVariant = Color(0xFF9E9E9E),
+    outline = Color(0xFF262626),
+    outlineVariant = Color(0xFF1A1A1A),
+    error = Color(0xFFE8222B),
     onError = Color.Black
 )
 
