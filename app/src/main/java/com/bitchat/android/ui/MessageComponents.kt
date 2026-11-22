@@ -1267,14 +1267,17 @@ private fun redeemCashu(context: Context, token: String, preferWallet: Boolean) 
  * baseline used while a message is still being sent.
  */
 private fun deliveryCheckColors(status: DeliveryStatus?, colorScheme: ColorScheme): Pair<Color, Color> {
-    val grey = colorScheme.onSurface.copy(alpha = 0.35f)
-    val green = colorScheme.primary
-    return when (status) {
-        is DeliveryStatus.Read -> green to green
-        is DeliveryStatus.Delivered -> green to grey
-        is DeliveryStatus.PartiallyDelivered -> green to grey
-        is DeliveryStatus.Failed -> colorScheme.error to colorScheme.error
-        else -> grey to grey
+    // MoshGrid ticks: one grey = sent, two grey = delivered, two blue = seen, red = not confirmed.
+    val faint = colorScheme.onSurface.copy(alpha = 0.2f)
+    val grey = colorScheme.onSurface.copy(alpha = 0.6f)
+    val seen = colorScheme.secondary
+    val hidden = Color.Transparent
+    return when (com.bitchat.android.mosh.tickFor(status, sentAtMs = 0L, nowMs = 0L)) {
+        com.bitchat.android.mosh.Tick.CLOCK -> faint to faint
+        com.bitchat.android.mosh.Tick.ONE_GREY -> grey to hidden
+        com.bitchat.android.mosh.Tick.TWO_GREY -> grey to grey
+        com.bitchat.android.mosh.Tick.TWO_BLUE -> seen to seen
+        com.bitchat.android.mosh.Tick.NOT_CONFIRMED -> colorScheme.error to colorScheme.error
     }
 }
 
@@ -1312,7 +1315,7 @@ fun DeliveryStatusIcon(status: DeliveryStatus) {
         }
     }
 
-    val text = remember(first, second) {
+    val text = remember(first, second, status is DeliveryStatus.Failed) {
         androidx.compose.ui.text.buildAnnotatedString {
             pushStyle(androidx.compose.ui.text.SpanStyle(color = first))
             append("✓")
@@ -1320,6 +1323,12 @@ fun DeliveryStatusIcon(status: DeliveryStatus) {
             pushStyle(androidx.compose.ui.text.SpanStyle(color = second))
             append("✓")
             pop()
+            if (status is DeliveryStatus.Failed) {
+                // MoshGrid: say what red ticks mean.
+                pushStyle(androidx.compose.ui.text.SpanStyle(color = first))
+                append(" Not confirmed")
+                pop()
+            }
         }
     }
     Text(

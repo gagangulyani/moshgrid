@@ -13,6 +13,16 @@ class BitchatApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // MoshGrid runtime (friends, state, sending) and opt-in monitoring. Favorites must exist
+        // first; MoshRuntime reads them lazily, so init order only matters for Monitoring.
+        try {
+            com.bitchat.android.mosh.MoshRuntime.init(this)
+            com.bitchat.android.mosh.monitor.Monitoring.init(this, com.bitchat.android.mosh.MoshRuntime.prefs)
+            com.bitchat.android.mosh.MoshStartup.onAppStart(this)
+        } catch (e: Exception) {
+            android.util.Log.e("MoshGrid", "MoshGrid init failed: ${e.javaClass.simpleName}")
+        }
+
         // Start the single process-wide power policy before transport components are constructed.
         com.bitchat.android.mesh.PowerManager.getInstance(this).start()
 

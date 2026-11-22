@@ -86,6 +86,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.BitchatAndroid"
         tools:targetApi="33">
+        <!-- MoshGrid: Sentry starts only after opt-in, from code. -->
+        <meta-data android:name="io.sentry.auto-init" android:value="false" />
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
             android:enabled="false"

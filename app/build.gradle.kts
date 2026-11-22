@@ -36,13 +36,15 @@ android {
         applicationId = "com.moshgrid.android"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 42
-        versionName = "2.2.0"
+        versionCode = 1
+        versionName = "1.0.0-moshgrid"
         buildConfigField(
             "String",
             "GITHUB_RELEASE_CERT_SHA256",
             "\"$normalizedGithubReleaseCertSha256\""
         )
+        // MoshGrid: Sentry DSN comes from -PsentryDsn=... or ~/.gradle/gradle.properties. Empty disables Sentry.
+        buildConfigField("String", "SENTRY_DSN", "\"${(project.findProperty("sentryDsn") as String?) ?: ""}\"")
 
         testInstrumentationRunner = if (composerUiTests) {
             "com.bitchat.android.ui.ComposerPanicTestRunner"
@@ -167,6 +169,9 @@ dependencies {
     implementation(libs.accompanist.permissions)
 
     // QR
+    // MoshGrid: crash reporting (MIT) and offline venue maps (BSD)
+    implementation(libs.sentry.android.core)
+    implementation(libs.maplibre.android)
     implementation(libs.zxing.core)
     implementation(libs.mlkit.barcode.scanning)
 

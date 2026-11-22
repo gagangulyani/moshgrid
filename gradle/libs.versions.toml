@@ -1,4 +1,6 @@
 [versions]
+sentry-android = "8.65.0"
+maplibre = "13.7.1"
 # Android and Kotlin
 agp = "9.3.1"
 kotlin = "2.4.10"
@@ -78,6 +80,8 @@ mockito-core = "5.23.0"
 roboelectric = "4.15" # 4.16+ drops the AndroidKeyStore shim; breaks EncryptionServiceTest
 
 [libraries]
+sentry-android-core = { module = "io.sentry:sentry-android-core", version.ref = "sentry-android" }
+maplibre-android = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
 # AndroidX Core
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
 androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "lifecycle-runtime" }

@@ -95,6 +95,7 @@ class MeshForegroundService : Service() {
     // Service lifecycle callbacks and notification state are main-thread confined.
     private val scope = CoroutineScope(Dispatchers.Main.immediate + serviceJob)
     private var isInForeground: Boolean = false
+    private val moshTicker by lazy { com.bitchat.android.mosh.MoshTicker(applicationContext, scope) }
     private var isShuttingDown: Boolean = false
     private var lastNotifiedPeerCount: Int? = null
 
@@ -123,6 +124,8 @@ class MeshForegroundService : Service() {
             MeshServiceHolder.attach(created)
         }
         MeshServiceHolder.getUnifiedOrCreate(applicationContext)
+        // MoshGrid: share location with friends and keep the heartbeat while the mesh runs.
+        moshTicker.start()
 
         // Notification content is driven by peer-state changes, not a permanent timer.
         updateJob = scope.launch {
@@ -367,6 +370,7 @@ class MeshForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        moshTicker.stop()
         updateJob?.cancel()
         updateJob = null
         // Cancel the service coroutine scope to prevent leaks
