@@ -251,6 +251,25 @@ class NostrTransport(
         }
     }
     
+    /** MoshGrid: send a friend-only payload over Nostr when no mesh path exists. */
+    fun sendMoshPayload(payload: com.bitchat.android.model.NoisePayload, to: String) {
+        transportScope.launch {
+            try {
+                val recipientNostrPubkey = resolveNostrPublicKey(to) ?: return@launch
+                val senderIdentity = NostrIdentityBridge.getCurrentNostrIdentity(context) ?: return@launch
+                val recipientHex = ContactIdentityResolver.nostrPubkeyHex(recipientNostrPubkey) ?: return@launch
+                val content = NostrEmbeddedBitChat.encodeMoshPayloadForNostr(payload, to, senderPeerID) ?: return@launch
+                NostrProtocol.createPrivateMessage(content = content, recipientPubkey = recipientHex, senderIdentity = senderIdentity)
+                    .forEach { event ->
+                        NostrRelayManager.registerPendingGiftWrap(event.id)
+                        NostrRelayManager.getInstance(context).sendEvent(event)
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send MoshGrid payload via Nostr: ${e.message}")
+            }
+        }
+    }
+
     fun sendDeliveryAck(messageID: String, to: String) {
         transportScope.launch {
             try {

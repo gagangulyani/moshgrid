@@ -244,6 +244,15 @@ class NostrDirectMessageHandler(
             NoisePayloadType.VERIFY_RESPONSE,
             NoisePayloadType.VOICE_FRAME,
             NoisePayloadType.PEER_STATE -> Unit // Peer state is bound to a live mesh Noise generation.
+            NoisePayloadType.LOCATION,
+            NoisePayloadType.MEETING_POINT,
+            NoisePayloadType.HELP,
+            NoisePayloadType.HELP_CANCEL -> {
+                // MoshGrid: map the Nostr sender back to their mesh peer ID, then friend-gate.
+                val noiseKey = com.bitchat.android.favorites.FavoritesPersistenceService.shared.findNoiseKey(senderPubkey)
+                val peerID = noiseKey?.let { com.bitchat.android.noise.NoisePeerIdentity.derivePeerID(it) } ?: return
+                com.bitchat.android.mosh.MoshInbox.receive(peerID, payload)
+            }
         }
     }
 

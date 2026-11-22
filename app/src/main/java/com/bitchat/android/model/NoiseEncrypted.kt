@@ -26,7 +26,12 @@ enum class NoisePayloadType(val value: UByte) {
     VERIFY_RESPONSE(0x11u),     // Verification response
     FILE_TRANSFER(0x20u),
     /** Authenticated capabilities + Ed25519 binding for the current Noise generation. */
-    PEER_STATE(0x21u);
+    PEER_STATE(0x21u),
+    // MoshGrid payloads (friend-only; 0x40+ keeps clear of upstream's range)
+    LOCATION(0x40u),
+    MEETING_POINT(0x41u),
+    HELP(0x42u),
+    HELP_CANCEL(0x43u);
 
 
     companion object {

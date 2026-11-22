@@ -1206,6 +1206,13 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
         sendNoisePayloadToPeer(payload, peerID, "verify response")
     }
 
+    /** MoshGrid: friend-only payloads ride the same Noise path as receipts. */
+    fun sendMoshPayload(payload: NoisePayload, recipientPeerID: String): Boolean {
+        if (!com.bitchat.android.mosh.MoshCodec.isMoshType(payload.type)) return false
+        sendNoisePayloadToPeer(payload, recipientPeerID, "mosh-${payload.type.name.lowercase()}")
+        return true
+    }
+
     private fun sendNoisePayloadToPeer(payload: NoisePayload, recipientPeerID: String, label: String) {
         serviceScope.launch {
             try {

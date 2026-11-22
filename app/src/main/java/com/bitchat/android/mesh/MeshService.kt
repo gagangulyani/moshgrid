@@ -16,6 +16,8 @@ interface MeshService {
     fun sendPrivateMessage(content: String, recipientPeerID: String, recipientNickname: String, messageID: String? = null)
     fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String)
     fun sendDeliveryAck(messageID: String, recipientPeerID: String) {}
+    /** MoshGrid: send a friend-only payload over this transport. Returns false when this transport cannot. */
+    fun sendMoshPayload(payload: com.bitchat.android.model.NoisePayload, recipientPeerID: String): Boolean = false
     fun sendFavoriteNotification(peerID: String, isFavorite: Boolean) {}
     fun sendVerifyChallenge(peerID: String, noiseKeyHex: String, nonceA: ByteArray)
     fun sendVerifyResponse(peerID: String, noiseKeyHex: String, nonceA: ByteArray)

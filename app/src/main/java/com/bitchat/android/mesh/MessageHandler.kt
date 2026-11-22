@@ -199,6 +199,13 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                 com.bitchat.android.model.NoisePayloadType.VERIFY_RESPONSE -> {
                     delegate?.onVerifyResponseReceived(peerID, noisePayload.data, packet.timestamp.toLong())
                 }
+                com.bitchat.android.model.NoisePayloadType.LOCATION,
+                com.bitchat.android.model.NoisePayloadType.MEETING_POINT,
+                com.bitchat.android.model.NoisePayloadType.HELP,
+                com.bitchat.android.model.NoisePayloadType.HELP_CANCEL -> {
+                    // MoshGrid: friend-gated inside MoshInbox; non-friends are dropped silently.
+                    com.bitchat.android.mosh.MoshInbox.receive(peerID, noisePayload)
+                }
             }
             
         } catch (e: Exception) {

@@ -116,6 +116,12 @@ class UnifiedMeshService(
         }
     }
 
+    override fun sendMoshPayload(payload: com.bitchat.android.model.NoisePayload, recipientPeerID: String): Boolean = when {
+        isBleReady(recipientPeerID) -> bluetooth.sendMoshPayload(payload, recipientPeerID)
+        isWifiReady(recipientPeerID) -> wifiService()?.sendMoshPayload(payload, recipientPeerID) ?: false
+        else -> false
+    }
+
     override fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String) {
         when {
             isBleReady(recipientPeerID) -> bluetooth.sendReadReceipt(messageID, recipientPeerID, readerNickname)

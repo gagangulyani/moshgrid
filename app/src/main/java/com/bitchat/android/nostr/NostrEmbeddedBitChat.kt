@@ -64,6 +64,32 @@ object NostrEmbeddedBitChat {
         }
     }
     
+    /** MoshGrid: embed a friend-only payload (location, meeting point, Help) for a Nostr DM. */
+    fun encodeMoshPayloadForNostr(
+        payload: com.bitchat.android.model.NoisePayload,
+        recipientPeerID: String,
+        senderPeerID: String
+    ): String? {
+        if (!com.bitchat.android.mosh.MoshCodec.isMoshType(payload.type)) return null
+        return try {
+            val packet = BitchatPacket(
+                version = 1u,
+                type = MessageType.NOISE_ENCRYPTED.value,
+                senderID = hexStringToByteArray(senderPeerID),
+                recipientID = hexStringToByteArray(normalizeRecipientPeerID(recipientPeerID)),
+                timestamp = System.currentTimeMillis().toULong(),
+                payload = payload.encode(),
+                signature = null,
+                ttl = com.bitchat.android.util.AppConstants.MESSAGE_TTL_HOPS
+            )
+            val data = packet.toBinaryData() ?: return null
+            PREFIX + base64URLEncode(data)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to encode MoshGrid payload for Nostr: ${e.message}")
+            null
+        }
+    }
+
     /**
      * Build a `bitchat1:` base64url-encoded BitChat packet carrying a delivery/read ack for Nostr DMs.
      */
