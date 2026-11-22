@@ -176,12 +176,8 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                         } catch (_: Exception) { }
                     }
                 },
-                announcementNicknameProvider = {
-                    try { com.bitchat.android.services.NicknameProvider.getNickname(context, myPeerID) } catch (_: Exception) { null }
-                },
-                leavePayloadProvider = {
-                    (delegate?.getNickname() ?: myPeerID).toByteArray(Charsets.UTF_8)
-                }
+                announcementNicknameProvider = { com.bitchat.android.mosh.MoshPrivacy.ANNOUNCED_NICKNAME },
+                leavePayloadProvider = { com.bitchat.android.mosh.MoshPrivacy.leavePayload() }
             )
         )
         fragmentingSender = FragmentingPacketSender(serviceScope, meshCore.fragmentManager, TAG)

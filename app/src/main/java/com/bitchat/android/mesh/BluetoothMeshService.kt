@@ -1234,7 +1234,7 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
      */
     fun sendBroadcastAnnounce() {
         serviceScope.launch {
-            val nickname = try { com.bitchat.android.services.NicknameProvider.getNickname(context, myPeerID) } catch (_: Exception) { myPeerID }
+            val nickname = com.bitchat.android.mosh.MoshPrivacy.ANNOUNCED_NICKNAME // MoshGrid: never announce the name in clear
             
             // Get the static public key for the announcement
             val staticKey = encryptionService.getStaticPublicKey()
@@ -1296,7 +1296,7 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
     fun sendAnnouncementToPeer(peerID: String) {
         if (peerManager.hasAnnouncedToPeer(peerID)) return
         
-        val nickname = try { com.bitchat.android.services.NicknameProvider.getNickname(context, myPeerID) } catch (_: Exception) { myPeerID }
+        val nickname = com.bitchat.android.mosh.MoshPrivacy.ANNOUNCED_NICKNAME // MoshGrid: never announce the name in clear
         
         // Get the static public key for the announcement
         val staticKey = encryptionService.getStaticPublicKey()

@@ -821,9 +821,7 @@ class MeshCore(
 
     fun sendBroadcastAnnounce() {
         scope.launch {
-            val nickname = hooks.announcementNicknameProvider?.invoke()
-                ?: delegate?.getNickname()
-                ?: myPeerID
+            val nickname = com.bitchat.android.mosh.MoshPrivacy.ANNOUNCED_NICKNAME // MoshGrid: never announce the name in clear
             val staticKey = encryptionService.getStaticPublicKey() ?: run {
                 Log.e("MeshCore", "No static public key available for announcement")
                 return@launch
@@ -848,9 +846,7 @@ class MeshCore(
 
     fun sendAnnouncementToPeer(peerID: String) {
         if (peerManager.hasAnnouncedToPeer(peerID)) return
-        val nickname = hooks.announcementNicknameProvider?.invoke()
-            ?: delegate?.getNickname()
-            ?: myPeerID
+        val nickname = com.bitchat.android.mosh.MoshPrivacy.ANNOUNCED_NICKNAME // MoshGrid: never announce the name in clear
         val staticKey = encryptionService.getStaticPublicKey() ?: return
         val signingKey = encryptionService.getSigningPublicKey() ?: return
         val announcement = IdentityAnnouncement.forLocalPeer(nickname, staticKey, signingKey)
@@ -899,7 +895,7 @@ class MeshCore(
     }
 
     fun sendLeaveAnnouncement() {
-        val payload = hooks.leavePayloadProvider?.invoke() ?: byteArrayOf()
+        val payload = com.bitchat.android.mosh.MoshPrivacy.leavePayload() // MoshGrid: no name in clear
         val packet = BitchatPacket(
             type = MessageType.LEAVE.value,
             ttl = maxTtl,
