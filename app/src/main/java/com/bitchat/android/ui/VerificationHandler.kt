@@ -31,7 +31,9 @@ class VerificationHandler(
     private val identityManager: SecureIdentityStateManager,
     private val state: ChatState,
     private val notificationManager: NotificationManager,
-    private val messageManager: MessageManager
+    private val messageManager: MessageManager,
+    /** MoshGrid: called with (peerID, name from their QR) when an in-person QR check succeeds. */
+    private val onQrVerified: ((peerID: String, qrNickname: String) -> Unit)? = null
 ) {
     // Helper to get current mesh service (may change after panic clear)
     private val meshService: MeshService
@@ -78,7 +80,7 @@ class VerificationHandler(
         if (pendingQRVerifications.containsKey(peerID)) return true
         val nonce = ByteArray(16)
         java.security.SecureRandom().nextBytes(nonce)
-        val pending = PendingVerification(qr.noiseKeyHex, qr.signKeyHex, nonce, System.currentTimeMillis(), false)
+        val pending = PendingVerification(qr.noiseKeyHex, qr.signKeyHex, nonce, System.currentTimeMillis(), false, qr.nickname)
         pendingQRVerifications[peerID] = pending
 
         if (meshService.getSessionState(peerID) is NoiseSession.NoiseSessionState.Established) {
@@ -153,8 +155,10 @@ class VerificationHandler(
             current.add(fp)
             _verifiedFingerprints.value = current
 
-            val name = resolvePeerDisplayName(peerID)
+            // MoshGrid: announcements carry no nickname, so the friend's name comes from their QR.
+            val name = pending.qrNickname.ifBlank { resolvePeerDisplayName(peerID) }
             identityManager.cacheFingerprintNickname(fp, name)
+            onQrVerified?.invoke(peerID, name)
             val noiseKeyHex = try {
                 meshService.getPeerInfo(peerID)?.noisePublicKey?.hexEncodedString()
             } catch (_: Exception) {
@@ -346,7 +350,8 @@ class VerificationHandler(
         val signKeyHex: String,
         val nonceA: ByteArray,
         val startedAtMs: Long,
-        val sent: Boolean
+        val sent: Boolean,
+        val qrNickname: String = ""
     ) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true

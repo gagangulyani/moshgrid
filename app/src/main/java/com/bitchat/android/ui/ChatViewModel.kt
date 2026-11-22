@@ -190,9 +190,14 @@ class ChatViewModel(
         identityManager = identityManager,
         state = state,
         notificationManager = notificationManager,
-        messageManager = messageManager
+        messageManager = messageManager,
+        onQrVerified = { peerID, qrNickname -> makeFriendAfterQr(peerID, qrNickname) }
     )
     val verifiedFingerprints = verificationHandler.verifiedFingerprints
+
+    /** MoshGrid friends: QR-verified favourites. */
+    val friendRegistry: com.bitchat.android.mosh.FriendRegistry =
+        com.bitchat.android.mosh.DefaultFriendRegistry.fromApp { verifiedFingerprints.value }
 
     // Media file sending manager
     private val mediaSendingManager = MediaSendingManager(
@@ -1059,6 +1064,17 @@ class ChatViewModel(
         return mesh.getPeerNicknames().entries.find { it.value == nickname }?.key
     }
     
+    /** MoshGrid: a successful in-person QR check makes the peer a favourite, named from their QR. */
+    private fun makeFriendAfterQr(peerID: String, qrNickname: String) {
+        val noiseKey = mesh.getPeerInfo(peerID)?.noisePublicKey ?: return
+        val service = com.bitchat.android.favorites.FavoritesPersistenceService.shared
+        if (service.getFavoriteStatus(noiseKey)?.isFavorite != true) {
+            toggleFavorite(peerID)
+        }
+        val rel = service.getFavoriteStatus(noiseKey)
+        service.updateFavoriteStatus(noiseKey, qrNickname, rel?.isFavorite ?: true)
+    }
+
     fun toggleFavorite(peerID: String) {
         Log.d("ChatViewModel", "toggleFavorite called for peerID: $peerID")
         privateChatManager.toggleFavorite(peerID)
