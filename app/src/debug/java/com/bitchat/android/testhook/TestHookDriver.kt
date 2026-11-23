@@ -82,6 +82,7 @@ object TestHookDriver {
             "mosh_befriend" -> moshBefriend(context, intent.requiredString("peer"), intent.getStringExtra("name") ?: "Test friend")
             "mosh_send" -> moshSend(context, intent.requiredString("peer"), intent.requiredString("kind"), intent.getStringExtra("token") ?: "t")
             "mosh_state" -> moshState(context, intent.requiredString("peer"))
+            "mosh_help" -> moshHelp(context, intent.requiredString("action"))
             "verification_set" -> verificationSet(
                 context,
                 intent.requiredString("peer"),
@@ -352,6 +353,22 @@ object TestHookDriver {
             .put("has_location", store.locations.value.containsKey(peerID))
             .put("meeting_label", store.meetingPoint.value?.label ?: JSONObject.NULL)
             .put("help_active", store.activeHelp.value[peerID]?.alertId ?: JSONObject.NULL)
+            .put("help_raised_at", store.activeHelp.value[peerID]?.raisedAtMs ?: JSONObject.NULL)
+    }
+
+    /** Raise or cancel Help through the real repeater (the path the Help button uses). */
+    private fun moshHelp(context: Context, action: String): JSONObject {
+        com.bitchat.android.mosh.MoshRuntime.init(context)
+        val help = com.bitchat.android.mosh.MoshRuntime.help
+        when (action) {
+            "raise" -> help.raise("lab")
+            "cancel" -> help.cancel()
+            "status" -> Unit
+            else -> return err("mosh_help", "unknown action $action")
+        }
+        val routes = JSONObject()
+        help.lastRoutes.forEach { (peer, route) -> routes.put(peer, route.name) }
+        return ok("mosh_help").put("alert_id", help.activeAlertId ?: JSONObject.NULL).put("routes", routes)
     }
 
     private fun favoriteStatus(context: Context, peerID: String): JSONObject {

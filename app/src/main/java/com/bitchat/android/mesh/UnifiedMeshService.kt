@@ -121,8 +121,20 @@ class UnifiedMeshService(
     override fun sendMoshPayload(payload: com.bitchat.android.model.NoisePayload, recipientPeerID: String): Boolean = when {
         isBleReady(recipientPeerID) -> bluetooth.sendMoshPayload(payload, recipientPeerID)
         isWifiReady(recipientPeerID) -> wifiService()?.sendMoshPayload(payload, recipientPeerID) ?: false
-        else -> false
+        else -> {
+            // MoshGrid: a friend can be connected with no encrypted session (after either app restarts).
+            // Nothing else starts one for MoshGrid payloads, so start it here; this send falls back to
+            // Nostr or waits, and the next one (Help retries every minute) goes over the mesh.
+            if (isBleConnected(recipientPeerID) && needsHandshake(bluetooth.getSessionState(recipientPeerID))) {
+                runCatching { bluetooth.initiateNoiseHandshake(recipientPeerID) }
+            }
+            false
+        }
     }
+
+    private fun needsHandshake(state: com.bitchat.android.noise.NoiseSession.NoiseSessionState): Boolean =
+        state is com.bitchat.android.noise.NoiseSession.NoiseSessionState.Uninitialized ||
+            state is com.bitchat.android.noise.NoiseSession.NoiseSessionState.Failed
 
     override fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String) {
         when {

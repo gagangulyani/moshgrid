@@ -18,6 +18,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +58,8 @@ fun MoshShell(chatViewModel: ChatViewModel, openFindFor: String? = null) {
     val me by MoshRuntime.myLocation.collectAsState()
     val stop by MoshRuntime.lastStop.collectAsState()
     val help by MoshRuntime.store.activeHelp.collectAsState()
+    var clockNow by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(30_000); clockNow = System.currentTimeMillis() } }
 
     if (showHelp) { HelpScreen { showHelp = false }; return }
 
@@ -70,7 +73,11 @@ fun MoshShell(chatViewModel: ChatViewModel, openFindFor: String? = null) {
         }
         if (help.isNotEmpty()) {
             val names = help.keys.joinToString { MoshRuntime.friends.displayName(it) ?: "A friend" }
-            Banner("$names asked for help. Tap Find.", Color(0xFF3A1214)) { tab = Tab.FIND }
+            // Help is never cleared by time: a phone that stops sending may be the emergency. Show the age instead.
+            val newest = help.values.maxOf { it.raisedAtMs }
+            val mins = ((clockNow - newest).coerceAtLeast(0) / 60_000)
+            val age = if (mins < 3) "" else " Last update $mins min ago."
+            Banner("$names asked for help.$age Tap Find.", Color(0xFF3A1214)) { tab = Tab.FIND }
         }
         stop?.let { s ->
             val at = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(s.stoppedAtMs))

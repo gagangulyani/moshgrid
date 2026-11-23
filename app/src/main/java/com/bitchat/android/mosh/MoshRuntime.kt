@@ -35,6 +35,9 @@ object MoshRuntime {
         val app = context.applicationContext
         appContext = app
         prefs = MoshPrefs.of(app)
+        val helpPrefs = app.getSharedPreferences("moshgrid_help", Context.MODE_PRIVATE)
+        FriendStateStore.sharedPersistence = PrefsReceivedHelp(helpPrefs)
+        helpOutbox = PrefsHelpOutbox(helpPrefs)
         val identity = SecureIdentityStateManager(app)
         friends = DefaultFriendRegistry.fromApp { identity.getVerifiedFingerprints() }
         sender = MoshSender(
@@ -58,14 +61,17 @@ object MoshRuntime {
         }
     }
 
+    @Volatile private var helpOutbox: HelpOutboxPersistence? = null
+
     fun updateMyLocation(l: LocationUpdate) { _myLocation.value = l }
 
     /** Help to friends. Position comes from the latest fix. */
     val help: HelpRepeater by lazy {
         HelpRepeater(
             clock = System::currentTimeMillis,
-            position = { myLocation.value?.let { Triple(it.lat, it.lon, it.accuracyM) } },
+            position = { myLocation.value },
             send = { p -> sendToFriends(p) },
+            persistence = helpOutbox,
         )
     }
 

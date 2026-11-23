@@ -8,7 +8,7 @@ import org.junit.Test
 
 class FriendStateStoreTest {
     private var now = 0L
-    private val store = FriendStateStore { now }
+    private val store = FriendStateStore(clock = { now })
 
     private fun loc(t: Long) = LocationUpdate(0.1, 0.2, 5f, t, 60)
     private fun mp(id: String, t: Long, cleared: Boolean = false) = MeetingPoint(id, 0.1, 0.2, "Tree", t, "x", cleared)

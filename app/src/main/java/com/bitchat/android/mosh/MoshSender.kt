@@ -2,7 +2,7 @@ package com.bitchat.android.mosh
 
 import com.bitchat.android.model.NoisePayload
 
-enum class MoshRoute { MESH, NOSTR, RATE_LIMITED, NONE }
+enum class MoshRoute { MESH, MESH_AND_NOSTR, NOSTR, RATE_LIMITED, NONE }
 
 /**
  * Chooses a path for a MoshGrid payload: mesh first, Nostr when the mesh cannot reach the friend.
@@ -11,6 +11,10 @@ enum class MoshRoute { MESH, NOSTR, RATE_LIMITED, NONE }
  * and not at all while the friend was reachable on the mesh within [MESH_GRACE_MS]. Every Nostr DM
  * is a gift-wrapped event and public relays rate-limit, so ten friends every 2 minutes would be
  * 300 events an hour. Help and meeting points are never throttled.
+ *
+ * Help, Help cancels and meeting points also go over Nostr when the mesh accepted them: a mesh
+ * "send" has no delivery receipt, and a friend who just walked away still looks connected until
+ * the peer entry times out. Receivers apply duplicates once (latest wins, alert IDs).
  */
 class MoshSender(
     private val clock: () -> Long,
@@ -24,7 +28,14 @@ class MoshSender(
     @Synchronized
     fun send(payload: MoshPayload, toPeerID: String): MoshRoute {
         val encoded = MoshCodec.encode(payload)
-        if (sendMesh(encoded, toPeerID)) return MoshRoute.MESH.also { com.bitchat.android.mosh.monitor.Counters.shared.inc("packet_sent_mesh") }
+        val critical = payload is HelpAlert || payload is HelpCancel || payload is MeetingPoint
+        if (sendMesh(encoded, toPeerID)) {
+            com.bitchat.android.mosh.monitor.Counters.shared.inc("packet_sent_mesh")
+            if (!critical || !internetAllowed()) return MoshRoute.MESH
+            sendNostr(encoded, toPeerID)
+            com.bitchat.android.mosh.monitor.Counters.shared.inc("packet_sent_nostr")
+            return MoshRoute.MESH_AND_NOSTR
+        }
         if (!internetAllowed()) return MoshRoute.NONE
         val now = clock()
         if (payload is LocationUpdate) {

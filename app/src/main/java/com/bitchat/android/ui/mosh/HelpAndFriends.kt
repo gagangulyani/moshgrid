@@ -73,14 +73,25 @@ fun HelpScreen(onClose: () -> Unit) {
             Text("Ask for help", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(onClick = onClose) { Text("Close") }
         }
+        val friendCount = remember { MoshRuntime.friends.friends().size }
         if (active) {
-            Text("Your friends have been alerted.", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text("Sending your position again every 2 minutes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Honest status: who it went to and how. A Bluetooth send has no receipt, so say "sent", not "received".
+            var routes by remember { mutableStateOf(MoshRuntime.help.lastRoutes) }
+            LaunchedEffect(Unit) { while (true) { routes = MoshRuntime.help.lastRoutes; delay(2_000) } }
+            val status = helpStatus(routes)
+            Text(status.headline, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                color = if (status.reachedAnyone) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+            status.lines.forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Text("Trying again every minute or two with your latest position.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(onClick = { MoshRuntime.help.cancel(); active = false },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Text("I'm OK now, cancel", color = MaterialTheme.colorScheme.onSurface)
             }
         } else {
+            if (friendCount == 0) {
+                Text("You have no friends added, so nobody will get this. In danger, call 112.",
+                    color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+            }
             OutlinedTextField(value = note, onValueChange = { note = it.take(120) },
                 label = { Text("What to look for (optional)") }, modifier = Modifier.fillMaxWidth())
             Text("Hold for $HOLD_SECONDS seconds. Let go to stop.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -102,6 +113,28 @@ fun HelpScreen(onClose: () -> Unit) {
             runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         }) { Text("Call 112") }
     }
+}
+
+internal data class HelpStatus(val headline: String, val lines: List<String>, val reachedAnyone: Boolean)
+
+/** Turns per-friend routes into plain words. Names come from the friend list. */
+internal fun helpStatus(routes: Map<String, com.bitchat.android.mosh.MoshRoute>,
+                        name: (String) -> String = { MoshRuntime.friends.displayName(it) ?: "A friend" }): HelpStatus {
+    if (routes.isEmpty()) return HelpStatus("Nobody to send to: you have no friends added.", emptyList(), false)
+    fun how(r: com.bitchat.android.mosh.MoshRoute) = when (r) {
+        com.bitchat.android.mosh.MoshRoute.MESH -> "Bluetooth"
+        com.bitchat.android.mosh.MoshRoute.MESH_AND_NOSTR -> "Bluetooth and internet"
+        com.bitchat.android.mosh.MoshRoute.NOSTR -> "internet"
+        else -> null
+    }
+    val sent = routes.filter { how(it.value) != null }
+    val missed = routes.keys - sent.keys
+    val lines = buildList {
+        if (sent.isNotEmpty()) add("Sent to " + sent.entries.joinToString { "${name(it.key)} (${how(it.value)})" })
+        if (missed.isNotEmpty()) add("Not reachable right now: " + missed.joinToString { name(it) })
+    }
+    return if (sent.isEmpty()) HelpStatus("Not sent yet: no friend nearby and no internet.", lines, false)
+    else HelpStatus("Help sent.", lines, true)
 }
 
 /** Friends list with status, location pause, and the way to add someone in person. */

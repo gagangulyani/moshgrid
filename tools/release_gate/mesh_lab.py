@@ -447,6 +447,46 @@ def scenario_mosh_help(a: Device, b: Device) -> dict:
     return _wait_state(b, id_a, lambda s: s.get("help_active") is None)
 
 
+def scenario_mosh_help_survives_kill(a: Device, b: Device) -> dict:
+    """Help raised on A keeps reaching B after A's app is force-stopped and relaunched."""
+    id_a, id_b = _mosh_pair(a, b)
+    raised = a.cmd_ok("mosh_help", action="raise")
+    alert = raised["alert_id"]
+    first = _wait_state(b, id_a, lambda s: s.get("help_active") == alert)
+    _shell(a.serial, f"am force-stop {a.package}")
+    time.sleep(5)
+    a.launch()
+    a.cmd_ok("start")
+    after = a.cmd_ok("mosh_help", action="status")
+    assert after["alert_id"] == alert, f"Help forgotten after restart: {after}"
+    # The service's first tick after start resends; the newer raised_at proves it came from the restarted app.
+    resent = _wait_state(b, id_a, lambda s: s.get("help_active") == alert
+                         and s.get("help_raised_at", 0) > first["help_raised_at"], timeout_s=150)
+    a.cmd_ok("mosh_help", action="cancel")
+    cleared = _wait_state(b, id_a, lambda s: s.get("help_active") is None)
+    return {"raise_routes": raised["routes"], "before_kill": first, "after_restart": resent, "after_cancel": cleared}
+
+
+def scenario_mosh_mesh_after_restart(a: Device, b: Device) -> dict:
+    """After A restarts, MoshGrid sends find their way back onto Bluetooth with no manual handshake."""
+    id_a, id_b = _mosh_pair(a, b)
+    _shell(a.serial, f"am force-stop {a.package}")
+    time.sleep(5)
+    a.launch()
+    a.cmd_ok("start")
+    routes = []
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        r = a.cmd_ok("mosh_send", peer=id_b, kind="location")["route"]
+        routes.append(r)
+        if r == "MESH":
+            break
+        time.sleep(10)
+    assert routes[-1] == "MESH", f"never back on Bluetooth after restart: {routes}"
+    state = _wait_state(b, id_a, lambda s: s.get("has_location") is True)
+    return {"routes_until_mesh": routes, "state": state}
+
+
 def scenario_mosh_stranger_dropped(a: Device, b: Device) -> dict:
     """B has not befriended A, so B drops A's location and Help. Run right after setup (fresh data)."""
     id_a = whoami(a)["peer_id"]
@@ -996,6 +1036,8 @@ SCENARIOS = {
     "mosh_meeting_point": scenario_mosh_meeting_point,
     "mosh_help": scenario_mosh_help,
     "mosh_stranger_dropped": scenario_mosh_stranger_dropped,
+    "mosh_help_survives_kill": scenario_mosh_help_survives_kill,
+    "mosh_mesh_after_restart": scenario_mosh_mesh_after_restart,
 }
 
 # Scenarios supported when device B is a watch (file scenarios are receive-only: phone sends,
