@@ -101,6 +101,7 @@ fun MoshOnboarding(prefs: MoshPrefs, onDone: () -> Unit) {
                 prefs.bluetooth = bluetooth; prefs.internet = internet
                 prefs.monitoringOptIn = monitoring; prefs.shareLocation = share
                 prefs.onboardingDone = true
+                com.bitchat.android.mosh.MoshNetworkGate.apply(context, prefs)
                 onDone()
             },
             modifier = Modifier.fillMaxWidth().height(56.dp),

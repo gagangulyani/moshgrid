@@ -185,6 +185,7 @@ class NostrRelayManager private constructor() {
      * picker's worldwide activity sweep. Pair with [releaseRelays].
      */
     fun connectToRelays(relayUrls: Collection<String>) {
+        if (!com.bitchat.android.mosh.MoshNetworkGate.allowsNostr()) return // MoshGrid: offline-only
         val urls = relayUrls.filter { it.isNotBlank() }.toSet()
         if (urls.isEmpty()) return
         // A relay held only for a live-location channel keeps its live gating.
@@ -273,6 +274,7 @@ class NostrRelayManager private constructor() {
         nRelays: Int = 5,
         liveLocationToken: Long? = null
     ) {
+        if (!com.bitchat.android.mosh.MoshNetworkGate.allowsNostr()) return // MoshGrid: offline-only
         if (!isNetworkActionAllowed(liveLocationToken)) return
         ensureGeohashRelaysConnected(
             geohash,
@@ -437,6 +439,7 @@ class NostrRelayManager private constructor() {
      * Connect to all configured relays
      */
     fun connect() {
+        if (!com.bitchat.android.mosh.MoshNetworkGate.allowsNostr()) return // MoshGrid: offline-only
         desiredConnected.set(true)
         Log.i(TAG, "Connecting to ${relaysList.size} Nostr relays")
         scope.launch {
@@ -493,6 +496,7 @@ class NostrRelayManager private constructor() {
         relayUrls: List<String>? = null,
         liveLocationToken: Long? = null
     ) {
+        if (!com.bitchat.android.mosh.MoshNetworkGate.allowsNostr()) return // MoshGrid: offline-only
         val targetRelays = (relayUrls ?: relaysList.map { it.url })
             .filter { it.isNotBlank() }
             .distinct()
@@ -888,6 +892,7 @@ class NostrRelayManager private constructor() {
         urlString: String,
         liveLocationToken: Long? = null
     ) {
+        if (!com.bitchat.android.mosh.MoshNetworkGate.allowsNostr()) return // MoshGrid: offline-only
         if (!desiredConnected.get()) return
         val connectionToken = liveLocationToken
             ?.takeIf { urlString !in nonLiveRelayUrls }

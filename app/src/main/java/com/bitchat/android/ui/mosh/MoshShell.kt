@@ -119,8 +119,8 @@ fun SettingsScreen() {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Text("Networks", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
-        CheckRow("Bluetooth (phone to phone)", bluetooth) { bluetooth = it; prefs.bluetooth = it }
-        CheckRow("Internet (Nostr relays)", internet) { internet = it; prefs.internet = it }
+        CheckRow("Bluetooth (phone to phone)", bluetooth) { bluetooth = it; prefs.bluetooth = it; com.bitchat.android.mosh.MoshNetworkGate.apply(context, prefs) }
+        CheckRow("Internet (Nostr relays)", internet) { internet = it; prefs.internet = it; com.bitchat.android.mosh.MoshNetworkGate.apply(context, prefs) }
         if (!internet) Text("Offline only: nothing leaves your phone except over Bluetooth.", fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Location", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))

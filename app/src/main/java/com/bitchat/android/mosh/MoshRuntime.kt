@@ -49,6 +49,7 @@ object MoshRuntime {
                 MeshServiceHolder.getUnifiedOrCreate(app).getPeerInfo(to)?.takeIf { it.isConnected }?.lastSeen
             },
         )
+        MoshNetworkGate.apply(app, prefs)
         MoshInbox.friends = friends
         MoshInbox.sink = { from, p ->
             store.apply(from, p)
