@@ -795,16 +795,16 @@ private fun MainHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
-                    LocationNotesButton(
+                    if (com.bitchat.android.mosh.MoshFeatures.LOCATION_NOTES) { LocationNotesButton(
                         viewModel = viewModel,
                         onClick = onLocationNotesClick
-                    )
+                    ) }
 
-                    LocationChannelsButton(
+                    if (com.bitchat.android.mosh.MoshFeatures.GEOHASH) { LocationChannelsButton(
                         viewModel = viewModel,
                         onClick = onLocationChannelsClick,
                         showLabel = crowdingMode != HeaderCrowdingMode.IconOnlyLocationChannel
-                    )
+                    ) }
                 }
 
                 PeerCounter(

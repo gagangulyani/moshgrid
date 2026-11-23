@@ -597,7 +597,7 @@ fun MessageInput(
                                         tween(BitchatMotion.QUICK_MS, easing = FastOutSlowInEasing)
                                     )
                             ) {
-                                ImagePickerButton(
+                                if (com.bitchat.android.mosh.MoshFeatures.MEDIA) { ImagePickerButton(
                                     onImageReady = { outPath ->
                                         onSendImageNote(
                                             latestSelectedPeer.value,
@@ -605,7 +605,7 @@ fun MessageInput(
                                             outPath
                                         )
                                     }
-                                )
+                                ) }
                             }
 
                             // The slide-to-cancel target sits well clear of the record
@@ -633,7 +633,7 @@ fun MessageInput(
                                 }
                             }
 
-                            VoiceRecordButton(
+                            if (com.bitchat.android.mosh.MoshFeatures.VOICE) { VoiceRecordButton(
                                 isRecording = isRecording,
                                 recorderFactory = recorderFactory?.let { factory ->
                                     { factory(latestSelectedPeer.value, latestChannel.value) }
@@ -685,7 +685,7 @@ fun MessageInput(
                                     amplitude = 0
                                     elapsedMs = 0L
                                 }
-                            )
+                            ) }
                         } else {
                             // No media in this context, so keep an inert send button rather than
                             // leaving a hole where the action cluster should be.
