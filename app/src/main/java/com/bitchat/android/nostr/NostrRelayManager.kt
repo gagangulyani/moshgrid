@@ -1056,6 +1056,7 @@ class NostrRelayManager private constructor() {
         error: Throwable,
         liveLocationToken: Long?
     ) {
+        com.bitchat.android.mosh.monitor.Counters.shared.inc("nostr_unreachable")
         if (!desiredConnected.get()) return
         handleCurrentDisconnection(relayUrl, error, liveLocationToken)
     }
@@ -1224,6 +1225,7 @@ class NostrRelayManager private constructor() {
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             Log.e(TAG, "Nostr WebSocket failure")
+            com.bitchat.android.mosh.monitor.Counters.shared.inc("nostr_unreachable")
             handleDisconnection(relayUrl, webSocket, t, liveLocationToken)
         }
     }

@@ -58,6 +58,7 @@ class PacketRelayManager(private val myPeerID: String) {
         // Check TTL and decrement
         if (packet.ttl == 0u.toUByte()) {
             Log.d(TAG, "TTL expired, not relaying packet")
+            com.bitchat.android.mosh.monitor.Counters.shared.inc("packet_dropped_ttl")
             return
         }
         
@@ -68,6 +69,7 @@ class PacketRelayManager(private val myPeerID: String) {
             MessageType.fromValue(packet.type) == MessageType.VOICE_FRAME && networkSize > 6
         ) minOf(decrementedTtl, 5u.toUByte()) else decrementedTtl
         val relayPacket = packet.copy(ttl = voiceTtl)
+        com.bitchat.android.mosh.monitor.Counters.shared.inc("packet_relayed")
         Log.d(TAG, "Decremented TTL from ${packet.ttl} to ${relayPacket.ttl}")
         if (MessageType.fromValue(packet.type) == MessageType.VOICE_FRAME) {
             delay(Random.nextLong(8L, 26L))

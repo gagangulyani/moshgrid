@@ -29,7 +29,10 @@ class MoshTicker(private val context: Context, private val scope: CoroutineScope
                 val btOn = bluetoothOn()
                 if (btWasOn && !btOn) MoshMonitor.event(context, "bt_off")
                 btWasOn = btOn
-                if (minutes % 60 == 0) MoshMonitor.event(context, "battery_pct", sharerBattery())
+                if (minutes % 60 == 0) {
+                    MoshMonitor.event(context, "battery_pct", sharerBattery())
+                    com.bitchat.android.mosh.monitor.Counters.shared.flushTo(MoshMonitor.fieldLog(context))
+                }
                 minutes++
                 delay(Heartbeat.BEAT_INTERVAL_MS)
             }

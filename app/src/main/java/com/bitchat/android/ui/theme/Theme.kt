@@ -43,26 +43,27 @@ internal val DarkBitchatColorScheme = darkColorScheme(
     onError = Color.Black
 )
 
+// MoshGrid light palette: darker lime/cyan so text stays readable on white.
 internal val LightBitchatColorScheme = lightColorScheme(
-    primary = Color(0xFF248A3D),
+    primary = Color(0xFF4D7A00),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD5F1D8),
-    onPrimaryContainer = Color(0xFF0A3212),
-    secondary = Color(0xFF007AFF),
+    primaryContainer = Color(0xFFE6FFB0),
+    onPrimaryContainer = Color(0xFF1C2A00),
+    secondary = Color(0xFF007C85),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD6E9FF),
-    onSecondaryContainer = Color(0xFF002C5C),
+    secondaryContainer = Color(0xFFC8F8FC),
+    onSecondaryContainer = Color(0xFF00363A),
     tertiary = LightBitchatPalette.accentOrange,
     onTertiary = Color.Black,
     background = Color(0xFFFFFFFF),
-    onBackground = Color(0xFF131A13),
-    surface = Color(0xFFF2F6F2),
-    onSurface = Color(0xFF131A13),
-    surfaceVariant = Color(0xFFE7EDE7),
-    onSurfaceVariant = Color(0xFF4C574C),
-    outline = Color(0xFFCBD6CB),
-    outlineVariant = Color(0xFFDEE6DE),
-    error = Color(0xFFD70015),
+    onBackground = Color(0xFF111111),
+    surface = Color(0xFFF4F4F4),
+    onSurface = Color(0xFF111111),
+    surfaceVariant = Color(0xFFEAEAEA),
+    onSurfaceVariant = Color(0xFF555555),
+    outline = Color(0xFFD0D0D0),
+    outlineVariant = Color(0xFFE2E2E2),
+    error = Color(0xFFE8222B),
     onError = Color.White
 )
 

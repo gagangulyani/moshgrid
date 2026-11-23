@@ -885,7 +885,7 @@ fun PeopleSection(
                 viewModel = viewModel,
                 onItemClick = { onPrivateChatStart(mappedConnectedPeerID ?: favPeerID) },
                 unreadCount = if (unreadCount > 0) unreadCount else if (hasUnread) 1 else 0,
-                showNostrGlobe = (fav.isMutual && fav.peerNostrPublicKey != null),
+                showNostrGlobe = com.bitchat.android.mosh.MoshFeatures.GLOBE && (fav.isMutual && fav.peerNostrPublicKey != null),
                 showHashSuffix = showHash
             )
         }

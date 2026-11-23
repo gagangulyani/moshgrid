@@ -254,6 +254,7 @@ class PeerManager {
         }
 
         if (isNewPeer && isVerified) {
+            com.bitchat.android.mosh.monitor.Counters.shared.inc("peer_seen")
             announcedPeers.add(peerID)
             Log.d(TAG, "🆕 New verified peer: $nickname ($peerID)")
         } else if (isVerified) {

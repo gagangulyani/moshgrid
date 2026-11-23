@@ -279,7 +279,7 @@ private fun FriendList(friends: List<Friend>, locations: Map<String, LocationUpd
                 else -> {
                     val dist = me?.let { metres(distanceM(it.lat, it.lon, l.lat, l.lon)) } ?: "?"
                     val stale = now - l.takenAtMs > 600_000
-                    "$dist · location ${ago(now - l.takenAtMs)}" + if (stale) " (old)" else ""
+                    "$dist · ±${l.accuracyM.toInt()} m · location ${ago(now - l.takenAtMs)}" + if (stale) " (old)" else ""
                 }
             }
             val silent = heard == null || now - heard > 900_000

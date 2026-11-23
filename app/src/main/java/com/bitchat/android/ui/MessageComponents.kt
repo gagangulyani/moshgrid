@@ -725,7 +725,7 @@ private fun SpamVerdict.debugLabel(): String = when (this) {
     val cashuTokens = remember(message.content) {
         CashuTokenDecoder.extractTokens(message.content)
     }
-    if (cashuTokens.isNotEmpty() && message.sender != "system") {
+    if (com.bitchat.android.mosh.MoshFeatures.CASHU && cashuTokens.isNotEmpty() && message.sender != "system") {
         CashuMessageContent(
             message = message,
             tokens = cashuTokens,
@@ -1303,6 +1303,9 @@ fun DeliveryStatusIcon(status: DeliveryStatus, sentAtMs: Long = 0L) {
     }
     val tick = com.bitchat.android.mosh.tickFor(status, sentAtMs = sentAtMs, nowMs = if (sentAtMs > 0L) nowMs else 0L)
     val notConfirmed = tick == com.bitchat.android.mosh.Tick.NOT_CONFIRMED
+    LaunchedEffect(notConfirmed) {
+        if (notConfirmed && sentAtMs > 0L) com.bitchat.android.mosh.monitor.Counters.shared.once("not_confirmed", sentAtMs.toString())
+    }
     val (firstTarget, secondTarget) = deliveryCheckColors(status, colorScheme, sentAtMs, if (sentAtMs > 0L) nowMs else 0L)
     val first by animateColorAsState(
         targetValue = firstTarget,

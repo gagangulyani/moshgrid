@@ -24,7 +24,7 @@ class MoshSender(
     @Synchronized
     fun send(payload: MoshPayload, toPeerID: String): MoshRoute {
         val encoded = MoshCodec.encode(payload)
-        if (sendMesh(encoded, toPeerID)) return MoshRoute.MESH
+        if (sendMesh(encoded, toPeerID)) return MoshRoute.MESH.also { com.bitchat.android.mosh.monitor.Counters.shared.inc("packet_sent_mesh") }
         if (!internetAllowed()) return MoshRoute.NONE
         val now = clock()
         if (payload is LocationUpdate) {
@@ -35,6 +35,7 @@ class MoshSender(
             lastNostrLocationMs[toPeerID] = now
         }
         sendNostr(encoded, toPeerID)
+        com.bitchat.android.mosh.monitor.Counters.shared.inc("packet_sent_nostr")
         return MoshRoute.NOSTR
     }
 
