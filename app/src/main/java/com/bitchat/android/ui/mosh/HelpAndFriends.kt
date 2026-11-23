@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -65,7 +67,7 @@ fun HelpScreen(onClose: () -> Unit) {
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Ask for help", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -104,7 +106,7 @@ fun HelpScreen(onClose: () -> Unit) {
 
 /** Friends list with status, location pause, and the way to add someone in person. */
 @Composable
-fun FriendsScreen(onAddFriend: () -> Unit) {
+fun FriendsScreen(onAddFriend: () -> Unit, onChat: (String) -> Unit) {
     var friends by remember { mutableStateOf(MoshRuntime.friends.friends()) }
     var paused by remember { mutableStateOf(MoshRuntime.prefs.pausedFriends) }
     LaunchedEffect(Unit) { while (true) { delay(5_000); friends = MoshRuntime.friends.friends() } }
@@ -121,6 +123,7 @@ fun FriendsScreen(onAddFriend: () -> Unit) {
                         Text(if (f.status == FriendStatus.WAITING_FOR_THEM) "Waiting for them to scan you" else "Friends",
                             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    TextButton(onClick = { onChat(f.peerID) }) { Text("Chat") }
                     Text("Share location", fontSize = 12.sp, modifier = Modifier.padding(end = 6.dp))
                     Switch(checked = f.peerID !in paused, onCheckedChange = { on ->
                         MoshRuntime.prefs.setPaused(f.peerID, !on); paused = MoshRuntime.prefs.pausedFriends

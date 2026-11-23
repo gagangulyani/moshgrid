@@ -115,7 +115,7 @@ fun FindScreen(focusPeerID: String? = null) {
                 modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
             )
             if (venue != null) {
-                Text(venue.name, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopStart).padding(12.dp)
+                Text(venue.name, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.align(Alignment.TopStart).padding(12.dp)
                     .background(Color(0xCC000000), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 6.dp))
             }
         }

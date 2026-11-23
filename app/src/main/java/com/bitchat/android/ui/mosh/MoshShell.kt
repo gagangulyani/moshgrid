@@ -76,9 +76,17 @@ fun MoshShell(chatViewModel: ChatViewModel, openFindFor: String? = null) {
         }
         Box(Modifier.weight(1f)) {
             when (tab) {
-                Tab.CHATS -> ChatScreen(viewModel = chatViewModel)
+                Tab.CHATS -> Column {
+                    Text("MoshGrid chats are friends-only. Open a friend's chat from the Friends tab.",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                    ChatScreen(viewModel = chatViewModel)
+                }
                 Tab.FIND -> FindScreen(focusPeerID = openFindFor)
-                Tab.FRIENDS -> FriendsScreen(onAddFriend = { chatViewModel.showVerificationSheet(); tab = Tab.CHATS })
+                Tab.FRIENDS -> FriendsScreen(
+                    onAddFriend = { chatViewModel.showVerificationSheet(); tab = Tab.CHATS },
+                    onChat = { peer -> chatViewModel.showPrivateChatSheet(peer); tab = Tab.CHATS },
+                )
                 Tab.SETTINGS -> SettingsScreen()
             }
         }
