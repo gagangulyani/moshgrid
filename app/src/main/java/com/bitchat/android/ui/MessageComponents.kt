@@ -491,7 +491,7 @@ fun MessageItem(
                             .align(Alignment.TopEnd)
                             .padding(top = 2.dp)
                     ) {
-                        DeliveryStatusIcon(status = status)
+                        DeliveryStatusIcon(status = status, sentAtMs = message.timestamp.time)
                     }
                 }
             }
@@ -509,7 +509,7 @@ fun MessageItem(
                         .padding(top = 2.dp, end = 4.dp),
                     contentAlignment = Alignment.CenterEnd
                 ) {
-                    DeliveryStatusIcon(status = status)
+                    DeliveryStatusIcon(status = status, sentAtMs = message.timestamp.time)
                 }
             }
         }
@@ -1096,7 +1096,7 @@ private fun BubbleTextMessageLayout(
                                 if (message.isPrivate) {
                                     message.deliveryStatus?.let { status ->
                                         Spacer(Modifier.width(4.dp))
-                                        DeliveryStatusIcon(status = status)
+                                        DeliveryStatusIcon(status = status, sentAtMs = message.timestamp.time)
                                     }
                                 }
                             }
@@ -1266,13 +1266,13 @@ private fun redeemCashu(context: Context, token: String, preferWallet: Boolean) 
  * app's primary green rather than a separate accent. [status] == null yields the all-grey
  * baseline used while a message is still being sent.
  */
-private fun deliveryCheckColors(status: DeliveryStatus?, colorScheme: ColorScheme): Pair<Color, Color> {
+private fun deliveryCheckColors(status: DeliveryStatus?, colorScheme: ColorScheme, sentAtMs: Long = 0L, nowMs: Long = 0L): Pair<Color, Color> {
     // MoshGrid ticks: one grey = sent, two grey = delivered, two blue = seen, red = not confirmed.
     val faint = colorScheme.onSurface.copy(alpha = 0.2f)
     val grey = colorScheme.onSurface.copy(alpha = 0.6f)
     val seen = colorScheme.secondary
     val hidden = Color.Transparent
-    return when (com.bitchat.android.mosh.tickFor(status, sentAtMs = 0L, nowMs = 0L)) {
+    return when (com.bitchat.android.mosh.tickFor(status, sentAtMs = sentAtMs, nowMs = nowMs)) {
         com.bitchat.android.mosh.Tick.CLOCK -> faint to faint
         com.bitchat.android.mosh.Tick.ONE_GREY -> grey to hidden
         com.bitchat.android.mosh.Tick.TWO_GREY -> grey to grey
@@ -1291,9 +1291,19 @@ private fun deliveryCheckRank(status: DeliveryStatus): Int = when (status) {
 }
 
 @Composable
-fun DeliveryStatusIcon(status: DeliveryStatus) {
+fun DeliveryStatusIcon(status: DeliveryStatus, sentAtMs: Long = 0L) {
     val colorScheme = MaterialTheme.colorScheme
-    val (firstTarget, secondTarget) = deliveryCheckColors(status, colorScheme)
+    // MoshGrid: a message still "sent" 10 minutes later turns into "Not confirmed".
+    var nowMs by remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(status, sentAtMs) {
+        while (status is DeliveryStatus.Sent && sentAtMs > 0L) {
+            nowMs = System.currentTimeMillis()
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    val tick = com.bitchat.android.mosh.tickFor(status, sentAtMs = sentAtMs, nowMs = if (sentAtMs > 0L) nowMs else 0L)
+    val notConfirmed = tick == com.bitchat.android.mosh.Tick.NOT_CONFIRMED
+    val (firstTarget, secondTarget) = deliveryCheckColors(status, colorScheme, sentAtMs, if (sentAtMs > 0L) nowMs else 0L)
     val first by animateColorAsState(
         targetValue = firstTarget,
         animationSpec = tween(BitchatMotion.QUICK_MS),
@@ -1315,7 +1325,7 @@ fun DeliveryStatusIcon(status: DeliveryStatus) {
         }
     }
 
-    val text = remember(first, second, status is DeliveryStatus.Failed) {
+    val text = remember(first, second, notConfirmed) {
         androidx.compose.ui.text.buildAnnotatedString {
             pushStyle(androidx.compose.ui.text.SpanStyle(color = first))
             append("✓")
@@ -1323,7 +1333,7 @@ fun DeliveryStatusIcon(status: DeliveryStatus) {
             pushStyle(androidx.compose.ui.text.SpanStyle(color = second))
             append("✓")
             pop()
-            if (status is DeliveryStatus.Failed) {
+            if (notConfirmed) {
                 // MoshGrid: say what red ticks mean.
                 pushStyle(androidx.compose.ui.text.SpanStyle(color = first))
                 append(" Not confirmed")

@@ -76,6 +76,7 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import java.util.UUID
 
+private const val MEETING = "__meeting__"
 private const val ACID = "#C6FF3D"
 private const val CYAN = "#3DF2FF"
 private const val PINK = "#FF5CDB"
@@ -86,7 +87,7 @@ private const val GREY = "#6E6E6E"
 private const val BASE_STYLE = """{"version":8,"sources":{},"layers":[{"id":"bg","type":"background","paint":{"background-color":"#050505"}}]}"""
 
 @Composable
-fun FindScreen(focusPeerID: String? = null) {
+fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
     val context = LocalContext.current
     val venues = remember { loadVenues(context) }
     val me by MoshRuntime.myLocation.collectAsState()
@@ -94,7 +95,7 @@ fun FindScreen(focusPeerID: String? = null) {
     val meeting by MoshRuntime.store.meetingPoint.collectAsState()
     val help by MoshRuntime.store.activeHelp.collectAsState()
     var friends by remember { mutableStateOf(MoshRuntime.friends.friends()) }
-    var selected by remember { mutableStateOf(focusPeerID) }
+    var selected by remember { mutableStateOf(if (focusMeeting) MEETING else focusPeerID) }
     var longPress by remember { mutableStateOf<LatLng?>(null) }
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -119,10 +120,13 @@ fun FindScreen(focusPeerID: String? = null) {
                     .background(Color(0xCC000000), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 6.dp))
             }
         }
-        meeting?.let { MeetingBanner(it, me) }
+        meeting?.let { MeetingBanner(it, me, onFind = { selected = MEETING }) }
         val target = friends.firstOrNull { it.peerID == selected }
-        if (target != null) {
-            GuidancePanel(target, me, locations[target.peerID], now) { selected = null }
+        val mp = meeting
+        if (selected == MEETING && mp != null) {
+            GuidancePanel("Going to ${mp.label}", me, LocationUpdate(mp.lat, mp.lon, 0f, mp.setAtMs, 0), now, showAge = false) { selected = null }
+        } else if (target != null) {
+            GuidancePanel("Finding ${target.displayName}", me, locations[target.peerID], now) { selected = null }
         } else {
             FriendList(friends, locations, me, now) { selected = it }
         }
@@ -295,13 +299,14 @@ private fun FriendList(friends: List<Friend>, locations: Map<String, LocationUpd
 }
 
 @Composable
-private fun MeetingBanner(mp: MeetingPoint, me: LocationUpdate?) {
+private fun MeetingBanner(mp: MeetingPoint, me: LocationUpdate?, onFind: () -> Unit) {
     Row(Modifier.fillMaxWidth().background(Color(0xFF2C3A0E)).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("Meeting point: ${mp.label}", fontWeight = FontWeight.Bold)
             me?.let { Text(metres(distanceM(it.lat, it.lon, mp.lat, mp.lon)) + " away", fontSize = 13.sp) }
         }
+        TextButton(onClick = onFind) { Text("Find") }
         TextButton(onClick = {
             MoshRuntime.setMeetingPoint(mp.copy(setAtMs = System.currentTimeMillis(), setBy = "me", cleared = true))
         }) { Text("Clear") }
@@ -309,11 +314,11 @@ private fun MeetingBanner(mp: MeetingPoint, me: LocationUpdate?) {
 }
 
 @Composable
-private fun GuidancePanel(f: Friend, me: LocationUpdate?, target: LocationUpdate?, now: Long, onClose: () -> Unit) {
+private fun GuidancePanel(title: String, me: LocationUpdate?, target: LocationUpdate?, now: Long, showAge: Boolean = true, onClose: () -> Unit) {
     val azimuth = rememberAzimuth()
     Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Finding ${f.displayName}", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         when {
             target == null -> Text("No location from them yet.")
             me == null -> Text("Waiting for your GPS…")
@@ -330,7 +335,7 @@ private fun GuidancePanel(f: Friend, me: LocationUpdate?, target: LocationUpdate
                 }
             }
         }
-        target?.let { Text("Their location: ${ago(now - it.takenAtMs)}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (showAge) target?.let { Text("Their location: ${ago(now - it.takenAtMs)}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         TextButton(onClick = onClose) { Text("Back to list") }
     }
 }

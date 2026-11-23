@@ -52,6 +52,9 @@ fun MoshShell(chatViewModel: ChatViewModel, openFindFor: String? = null) {
     }
     var tab by remember { mutableStateOf(if (openFindFor != null) Tab.FIND else Tab.CHATS) }
     var showHelp by remember { mutableStateOf(false) }
+    var findMeeting by remember { mutableStateOf(false) }
+    val meeting by MoshRuntime.store.meetingPoint.collectAsState()
+    val me by MoshRuntime.myLocation.collectAsState()
     val stop by MoshRuntime.lastStop.collectAsState()
     val help by MoshRuntime.store.activeHelp.collectAsState()
 
@@ -80,9 +83,22 @@ fun MoshShell(chatViewModel: ChatViewModel, openFindFor: String? = null) {
                     Text("MoshGrid chats are friends-only. Open a friend's chat from the Friends tab.",
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                    // Meeting point from the chat: see it, go to it, or set one at your spot.
+                    val mp = meeting
+                    if (mp != null) {
+                        val dist = me?.let { " · " + com.bitchat.android.mosh.distanceM(it.lat, it.lon, mp.lat, mp.lon).toInt() + " m" } ?: ""
+                        Banner("Meeting point: ${mp.label}$dist", Color(0xFF2C3A0E), action = "Find") { findMeeting = true; tab = Tab.FIND }
+                    } else if (me != null) {
+                        TextButton(onClick = {
+                            val here = me ?: return@TextButton
+                            MoshRuntime.setMeetingPoint(com.bitchat.android.mosh.MeetingPoint(
+                                java.util.UUID.randomUUID().toString().take(12), here.lat, here.lon, "Where I am now",
+                                System.currentTimeMillis(), "me", cleared = false))
+                        }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Set meeting point where I am") }
+                    }
                     ChatScreen(viewModel = chatViewModel)
                 }
-                Tab.FIND -> FindScreen(focusPeerID = openFindFor)
+                Tab.FIND -> FindScreen(focusPeerID = openFindFor, focusMeeting = findMeeting)
                 Tab.FRIENDS -> FriendsScreen(
                     onAddFriend = { chatViewModel.showVerificationSheet(); tab = Tab.CHATS },
                     onChat = { peer -> chatViewModel.showPrivateChatSheet(peer); tab = Tab.CHATS },
@@ -92,18 +108,18 @@ fun MoshShell(chatViewModel: ChatViewModel, openFindFor: String? = null) {
         }
         NavigationBar {
             Tab.entries.forEach { t ->
-                NavigationBarItem(selected = tab == t, onClick = { tab = t }, icon = {}, label = { Text(t.label, fontWeight = FontWeight.Bold) })
+                NavigationBarItem(selected = tab == t, onClick = { if (t != Tab.FIND) findMeeting = false; tab = t }, icon = {}, label = { Text(t.label, fontWeight = FontWeight.Bold) })
             }
         }
     }
 }
 
 @Composable
-private fun Banner(text: String, color: Color, onTap: () -> Unit) {
+private fun Banner(text: String, color: Color, action: String = "OK", onTap: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).background(color, RoundedCornerShape(12.dp))
         .padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(text, fontSize = 14.sp, modifier = Modifier.weight(1f))
-        TextButton(onClick = onTap) { Text("OK") }
+        TextButton(onClick = onTap) { Text(action) }
     }
 }
 
