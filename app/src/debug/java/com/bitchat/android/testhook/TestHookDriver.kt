@@ -78,6 +78,10 @@ object TestHookDriver {
                 intent.getBooleanExtra("enabled", true)
             )
             "favorite_status" -> favoriteStatus(context, intent.requiredString("peer"))
+            // MoshGrid (debug only): make a peer a friend, send friend-only payloads, read state.
+            "mosh_befriend" -> moshBefriend(context, intent.requiredString("peer"), intent.getStringExtra("name") ?: "Test friend")
+            "mosh_send" -> moshSend(context, intent.requiredString("peer"), intent.requiredString("kind"), intent.getStringExtra("token") ?: "t")
+            "mosh_state" -> moshState(context, intent.requiredString("peer"))
             "verification_set" -> verificationSet(
                 context,
                 intent.requiredString("peer"),
@@ -309,6 +313,45 @@ object TestHookDriver {
         )
         mesh.sendFavoriteNotification(peerID, enabled)
         return favoriteStatus(context, peerID)
+    }
+
+    // MARK: - MoshGrid (debug only). Synthetic coordinates only.
+
+    private fun moshBefriend(context: Context, peerID: String, name: String): JSONObject {
+        val mesh = mesh(context)
+        val key = mesh.getPeerInfo(peerID)?.noisePublicKey ?: return err("mosh_befriend", "peer Noise key is unavailable")
+        FavoritesPersistenceService.initialize(context)
+        FavoritesPersistenceService.shared.updateFavoriteStatus(key, name, true)
+        FavoritesPersistenceService.shared.updatePeerFavoritedUs(key, true)
+        val identity = com.bitchat.android.identity.SecureIdentityStateManager(context)
+        identity.setVerifiedFingerprint(identity.generateFingerprint(key), true)
+        com.bitchat.android.mosh.MoshRuntime.init(context)
+        return ok("mosh_befriend").put("peer", peerID)
+            .put("is_friend", com.bitchat.android.mosh.MoshRuntime.friends.isFriend(peerID))
+    }
+
+    private fun moshSend(context: Context, peerID: String, kind: String, token: String): JSONObject {
+        com.bitchat.android.mosh.MoshRuntime.init(context)
+        val now = System.currentTimeMillis()
+        val payload: com.bitchat.android.mosh.MoshPayload = when (kind) {
+            "location" -> com.bitchat.android.mosh.LocationUpdate(0.5, 0.25, 5f, now, 50)
+            "meeting" -> com.bitchat.android.mosh.MeetingPoint("mp-$token", 0.5, 0.25, "test $token", now, "lab", false)
+            "help" -> com.bitchat.android.mosh.HelpAlert("h-$token", 0.5, 0.25, 5f, "test $token", now)
+            "help_cancel" -> com.bitchat.android.mosh.HelpCancel("h-$token", now)
+            else -> return err("mosh_send", "unknown kind $kind")
+        }
+        val route = com.bitchat.android.mosh.MoshRuntime.sender.send(payload, peerID)
+        return ok("mosh_send").put("route", route.name)
+    }
+
+    private fun moshState(context: Context, peerID: String): JSONObject {
+        com.bitchat.android.mosh.MoshRuntime.init(context)
+        val store = com.bitchat.android.mosh.MoshRuntime.store
+        return ok("mosh_state")
+            .put("is_friend", com.bitchat.android.mosh.MoshRuntime.friends.isFriend(peerID))
+            .put("has_location", store.locations.value.containsKey(peerID))
+            .put("meeting_label", store.meetingPoint.value?.label ?: JSONObject.NULL)
+            .put("help_active", store.activeHelp.value[peerID]?.alertId ?: JSONObject.NULL)
     }
 
     private fun favoriteStatus(context: Context, peerID: String): JSONObject {

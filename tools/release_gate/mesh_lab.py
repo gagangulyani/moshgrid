@@ -24,6 +24,7 @@ import concurrent.futures
 import hashlib
 import json
 import random
+import secrets
 import shlex
 import subprocess
 import sys
@@ -392,6 +393,55 @@ def wait_for_mutual_discovery(a: Device, b: Device) -> None:
 
 
 # MARK: - scenarios
+
+def _mosh_pair(a: Device, b: Device) -> tuple[str, str]:
+    """Handshake and befriend both ways (debug hook stands in for the in-person QR scan)."""
+    id_a = whoami(a)["peer_id"]
+    id_b = whoami(b)["peer_id"]
+    wait_for_mutual_discovery(a, b)
+    a.cmd_ok("handshake", timeout_ms=60_000, peer=id_b)
+    b.cmd_ok("handshake", timeout_ms=60_000, peer=id_a)
+    assert a.cmd_ok("mosh_befriend", peer=id_b)["is_friend"], "A did not befriend B"
+    assert b.cmd_ok("mosh_befriend", peer=id_a)["is_friend"], "B did not befriend A"
+    return id_a, id_b
+
+
+def _wait_state(dev: Device, peer: str, check, timeout_s: int = 30) -> dict:
+    deadline = time.time() + timeout_s
+    last = {}
+    while time.time() < deadline:
+        last = dev.cmd_ok("mosh_state", peer=peer)
+        if check(last):
+            return last
+        time.sleep(1)
+    raise AssertionError(f"state not reached within {timeout_s}s: {last}")
+
+
+def scenario_mosh_location(a: Device, b: Device) -> dict:
+    """A friend's location reaches the other phone within 30 s."""
+    id_a, id_b = _mosh_pair(a, b)
+    sent = a.cmd_ok("mosh_send", peer=id_b, kind="location")
+    state = _wait_state(b, id_a, lambda s: s.get("has_location") is True)
+    return {"route": sent.get("route"), "state": state}
+
+
+def scenario_mosh_meeting_point(a: Device, b: Device) -> dict:
+    """A meeting point set by A shows on B within 30 s."""
+    id_a, id_b = _mosh_pair(a, b)
+    token = secrets.token_hex(3)
+    a.cmd_ok("mosh_send", peer=id_b, kind="meeting", token=token)
+    return _wait_state(b, id_a, lambda s: s.get("meeting_label") == f"test {token}")
+
+
+def scenario_mosh_help(a: Device, b: Device) -> dict:
+    """Help raised by A is active on B, then cleared by cancel."""
+    id_a, id_b = _mosh_pair(a, b)
+    token = secrets.token_hex(3)
+    a.cmd_ok("mosh_send", peer=id_b, kind="help", token=token)
+    _wait_state(b, id_a, lambda s: s.get("help_active") == f"h-{token}")
+    a.cmd_ok("mosh_send", peer=id_b, kind="help_cancel", token=token)
+    return _wait_state(b, id_a, lambda s: s.get("help_active") is None)
+
 
 def scenario_dm(a: Device, b: Device) -> dict:
     """Handshake, then exchange DMs in both directions with content assertions."""
@@ -916,6 +966,9 @@ SCENARIOS = {
     "raw": scenario_raw,
     "session_recovery": scenario_session_recovery,
     "identity_reset": scenario_identity_reset,
+    "mosh_location": scenario_mosh_location,
+    "mosh_meeting_point": scenario_mosh_meeting_point,
+    "mosh_help": scenario_mosh_help,
 }
 
 # Scenarios supported when device B is a watch (file scenarios are receive-only: phone sends,
