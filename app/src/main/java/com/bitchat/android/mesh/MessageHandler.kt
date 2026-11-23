@@ -458,6 +458,8 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
      * Handle broadcast message with verification enforcement
      */
     private suspend fun handleBroadcastMessage(routed: RoutedPacket) {
+        // MoshGrid is friends-only: public broadcast messages are never shown (relaying is unaffected).
+        if (!com.bitchat.android.mosh.MoshFeatures.PUBLIC_CHAT) return
         val packet = routed.packet
         val peerID = routed.peerID ?: "unknown"
         

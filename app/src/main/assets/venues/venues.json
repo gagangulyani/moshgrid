@@ -1,0 +1,4 @@
+{"venues":[
+  {"id":"delhi-leisure-valley","name":"Leisure Valley Ground","city":"Gurugram (Delhi NCR)","dates":["2026-12-05"],"bbox":[77.03574,28.44195,77.09706,28.49585],"asset":"venues/delhi-leisure-valley.geojson"},
+  {"id":"mumbai-mahalaxmi","name":"Mahalaxmi Race Course","city":"Mumbai","dates":["2026-12-08","2026-12-09"],"bbox":[72.7921,18.95825,72.8491,19.01215],"asset":"venues/mumbai-mahalaxmi.geojson"}
+]}

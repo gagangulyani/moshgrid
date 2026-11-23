@@ -330,7 +330,11 @@ class MainActivity : OrientationAwareActivity() {
 
                 // Add the callback - this will be automatically removed when the activity is destroyed
                 onBackPressedDispatcher.addCallback(this, backCallback)
-                ChatScreen(viewModel = chatViewModel)
+                // MoshGrid: setup checklist on first run, then Chats / Find / Friends / Settings + Help.
+                com.bitchat.android.ui.mosh.MoshShell(
+                    chatViewModel = chatViewModel,
+                    openFindFor = intent?.getStringExtra(com.bitchat.android.mosh.HelpNotifier.EXTRA_OPEN_FIND)
+                )
             }
             
             OnboardingState.ERROR -> {

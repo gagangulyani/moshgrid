@@ -95,6 +95,8 @@ class UnifiedMeshService(
     }
 
     override fun sendMessage(content: String, mentions: List<String>, channel: String?) {
+        // MoshGrid is friends-only: no public broadcast messages.
+        if (!com.bitchat.android.mosh.MoshFeatures.PUBLIC_CHAT) return
         when {
             isBleEnabled() -> bluetooth.sendMessage(content, mentions, channel)
             else -> wifiService()?.sendMessage(content, mentions, channel)
