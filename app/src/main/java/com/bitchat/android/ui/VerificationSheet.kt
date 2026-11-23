@@ -77,10 +77,6 @@ import com.bitchat.android.services.VerificationService
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.common.InputImage
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.common.BitMatrix
 import com.google.zxing.qrcode.QRCodeWriter
@@ -512,27 +508,54 @@ private fun bitmapFromMatrix(matrix: BitMatrix): Bitmap {
     return bitmap
 }
 
+/**
+ * QR analyzer on ZXing (Apache-2.0) instead of ML Kit, so the app has no proprietary Google
+ * libraries. Reads the luminance plane only; QR decoding does not depend on frame rotation.
+ */
 internal class QRCodeAnalyzer(
     private val onCode: (String) -> Unit
 ) : ImageAnalysis.Analyzer {
-    private val scanner = BarcodeScanning.getClient(
-        BarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-            .build()
-    )
 
     @ExperimentalGetImage
     override fun analyze(imageProxy: ImageProxy) {
-        val mediaImage = imageProxy.image ?: run {
-            imageProxy.close()
-            return
-        }
-        val input = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-        scanner.process(input)
-            .addOnSuccessListener { barcodes ->
-                val text = barcodes.firstOrNull()?.rawValue
-                if (!text.isNullOrBlank()) onCode(text)
+        try {
+            val image = imageProxy.image ?: return
+            val plane = image.planes[0]
+            val width = image.width
+            val height = image.height
+            val buffer = plane.buffer
+            val luminance = ByteArray(width * height)
+            if (plane.pixelStride == 1 && plane.rowStride == width) {
+                buffer.position(0); buffer.get(luminance, 0, luminance.size)
+            } else {
+                for (row in 0 until height) for (col in 0 until width) {
+                    luminance[row * width + col] = buffer.get(row * plane.rowStride + col * plane.pixelStride)
+                }
             }
-            .addOnCompleteListener { imageProxy.close() }
+            val text = decodeQrLuminance(luminance, width, height)
+            if (!text.isNullOrBlank()) onCode(text)
+        } catch (_: Exception) {
+            // A bad frame is skipped; the next one is tried.
+        } finally {
+            imageProxy.close()
+        }
     }
+}
+
+/** Decodes a QR code from an 8-bit luminance frame, normal or inverted. Null when none is found. */
+internal fun decodeQrLuminance(luminance: ByteArray, width: Int, height: Int): String? {
+    val hints = mapOf(
+        com.google.zxing.DecodeHintType.TRY_HARDER to true,
+        com.google.zxing.DecodeHintType.POSSIBLE_FORMATS to listOf(com.google.zxing.BarcodeFormat.QR_CODE),
+    )
+    val source = com.google.zxing.PlanarYUVLuminanceSource(luminance, width, height, 0, 0, width, height, false)
+    for (candidate in listOf(source, source.invert())) {
+        try {
+            val bitmap = com.google.zxing.BinaryBitmap(com.google.zxing.common.HybridBinarizer(candidate))
+            return com.google.zxing.qrcode.QRCodeReader().decode(bitmap, hints).text
+        } catch (_: com.google.zxing.ReaderException) {
+            // try the next candidate
+        }
+    }
+    return null
 }

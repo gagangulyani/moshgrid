@@ -64,7 +64,7 @@ All constraints from [`README.md`](README.md#global-constraints) apply. The ones
 - [ ] **Step 1: Scaffold the project**
 
 ```bash
-cd ~/projects/MoshGrid
+cd MoshGrid
 npx create-expo-app@latest . --template blank-typescript
 ```
 
