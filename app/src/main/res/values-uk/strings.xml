@@ -284,7 +284,6 @@
     <string name="background_location_settings_tip">Коли відкриються налаштування, виберіть «Дозволити завжди».</string>
     <string name="background_location_needs_for">MoshGrid використовує фонову геолокацію для:</string>
     <string name="background_location_needs_bullets">- сканування пристроїв поруч, коли додаток закрито\n- повторного підключення після перезавантаження\n- підтримки роботи mesh-мережі у фоновому режимі</string>
-    <string name="background_location_privacy_note">Ми НІКОЛИ не збираємо і не зберігаємо вашу локацію. Ваша приватність у безпеці.</string>
     <string name="grant_background_location">Дозволити фонову геолокацію</string>
     <string name="skip_background_location">Продовжити без фонової геолокації</string>
     <string name="open_location_settings">Відкрити налаштування геолокації</string>

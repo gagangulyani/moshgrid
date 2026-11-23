@@ -518,7 +518,6 @@
     <string name="background_location_settings_tip">Ezarpenak irekitzean, aukeratu \"Baimendu beti\".</string>
     <string name="background_location_needs_for">MoshGrid-ek atzeko planoko kokapena erabiltzen du honetarako:</string>
     <string name="background_location_needs_bullets">- Inguruko gailuak eskaneatzeko aplikazioa itxita dagoenean\n- Berrabiarazi ondoren berriro konektatzeko\n- Mesh sarea atzeko planoan martxan mantentzeko</string>
-    <string name="background_location_privacy_note">Ez dugu INOIZ zure kokapena biltzen edo gordetzen. Zure pribatutasuna seguru dago.</string>
     <string name="grant_background_location">Baimendu atzeko planoko kokapena</string>
     <string name="skip_background_location">Jarraitu atzeko planoko kokapenik gabe</string>
     <string name="open_location_settings">Ireki kokapen-ezarpenak</string>

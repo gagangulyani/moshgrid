@@ -12,4 +12,6 @@ object MoshFeatures {
     const val LOCATION_NOTES = false
     const val CASHU = false
     const val GEOHASH = false
+    /** Upstream About sheet: describes bitchat features MoshGrid hides. Triple-tap wipe still works. */
+    const val ABOUT = false
 }

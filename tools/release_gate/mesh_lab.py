@@ -132,7 +132,11 @@ class Device:
         starts) keeps the process unfrozen.
         """
         for _attempt in range(3):
-            _shell(self.serial, f"monkey -p {self.package} -c android.intent.category.LAUNCHER 1")
+            try:
+                # Emulators without hardware keys make monkey exit non-zero even when it launched.
+                _shell(self.serial, f"monkey -p {self.package} -c android.intent.category.LAUNCHER 1")
+            except Exception:
+                pass
             time.sleep(3)
             try:
                 top = _shell(
@@ -441,6 +445,28 @@ def scenario_mosh_help(a: Device, b: Device) -> dict:
     _wait_state(b, id_a, lambda s: s.get("help_active") == f"h-{token}")
     a.cmd_ok("mosh_send", peer=id_b, kind="help_cancel", token=token)
     return _wait_state(b, id_a, lambda s: s.get("help_active") is None)
+
+
+def scenario_mosh_stranger_dropped(a: Device, b: Device) -> dict:
+    """B has not befriended A, so B drops A's location and Help. Run right after setup (fresh data)."""
+    id_a = whoami(a)["peer_id"]
+    id_b = whoami(b)["peer_id"]
+    wait_for_mutual_discovery(a, b)
+    a.cmd_ok("handshake", timeout_ms=60_000, peer=id_b)
+    a.cmd_ok("mosh_befriend", peer=id_b)
+    assert not b.cmd_ok("mosh_state", peer=id_a)["is_friend"], "B already treats A as a friend; rerun setup first"
+    token = secrets.token_hex(3)
+    a.cmd_ok("mosh_send", peer=id_b, kind="location")
+    a.cmd_ok("mosh_send", peer=id_b, kind="help", token=token)
+    time.sleep(10)
+    state = b.cmd_ok("mosh_state", peer=id_a)
+    assert state["has_location"] is False and state["help_active"] is None, f"stranger payload accepted: {state}"
+    # Control: once B befriends A the same send arrives, so the drop above was the friend gate, not the link.
+    b.cmd_ok("handshake", timeout_ms=60_000, peer=id_a)
+    b.cmd_ok("mosh_befriend", peer=id_a)
+    a.cmd_ok("mosh_send", peer=id_b, kind="location")
+    control = _wait_state(b, id_a, lambda s: s.get("has_location") is True)
+    return {"as_stranger": state, "after_befriend": control}
 
 
 def scenario_dm(a: Device, b: Device) -> dict:
@@ -969,6 +995,7 @@ SCENARIOS = {
     "mosh_location": scenario_mosh_location,
     "mosh_meeting_point": scenario_mosh_meeting_point,
     "mosh_help": scenario_mosh_help,
+    "mosh_stranger_dropped": scenario_mosh_stranger_dropped,
 }
 
 # Scenarios supported when device B is a watch (file scenarios are receive-only: phone sends,
@@ -996,7 +1023,8 @@ def run_scenario(name: str, a: Device, b: Device, out: Path | None) -> dict:
         if name == "all":
             results = {}
             failures = []
-            for n in supported:
+            # mosh_stranger_dropped needs fresh app data, so it runs on its own after setup.
+            for n in [n for n in supported if n != "mosh_stranger_dropped"]:
                 sub = run_scenario(n, a, b, out)
                 results[n] = sub.get("results", {"error": sub.get("error", "unknown")})
                 if sub["status"] != "pass":

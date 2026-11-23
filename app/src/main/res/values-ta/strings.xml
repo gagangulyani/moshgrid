@@ -295,7 +295,6 @@
   <string name="background_location_settings_tip">அமைப்புகள் திறக்கும்போது, "எப்போதும் அனுமதிக்கவும்" என்பதைத் தேர்ந்தெடுக்கவும்.</string>
   <string name="background_location_needs_for">MoshGrid பின்னணி இருப்பிடத்தைப் பயன்படுத்துவது:</string>
   <string name="background_location_needs_bullets">- ஆப் மூடப்பட்டிருக்கும்போது அருகிலுள்ள சாதனங்களை ஸ்கேன் செய்ய\n- ரீபூட்டிற்குப் பிறகு மீண்டும் இணைக்க\n- மெஷை பின்னணியில் இயங்க வைக்க</string>
-  <string name="background_location_privacy_note">உங்கள் இருப்பிடத்தை நாங்கள் ஒருபோதும் சேகரிக்கவோ சேமிக்கவோ மாட்டோம். உங்கள் தனியுரிமை பாதுகாப்பானது.</string>
   <string name="grant_background_location">பின்னணி இருப்பிடத்தை அனுமதி</string>
   <string name="skip_background_location">பின்னணி இருப்பிடம் இல்லாமல் தொடரவும்</string>
   <string name="open_location_settings">இருப்பிட அமைப்புகளைத் திற</string>

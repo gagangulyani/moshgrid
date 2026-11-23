@@ -542,7 +542,7 @@
   <string name="background_location_settings_tip">When settings opens, choose "Allow all the time".</string>
   <string name="background_location_needs_for">MoshGrid uses background location for:</string>
   <string name="background_location_needs_bullets">- Scan for nearby devices while the app is closed\n- Reconnect after reboot\n- Keep the mesh running in the background</string>
-  <string name="background_location_privacy_note">We NEVER collect or store your location. Your privacy is safe.</string>
+  <string name="background_location_privacy_note">Your location goes only to friends you added in person, and only while sharing is on.</string>
   <string name="grant_background_location">Allow Background Location</string>
   <string name="skip_background_location">Continue without background location</string>
   <string name="open_location_settings">Open Location Settings</string>

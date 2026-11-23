@@ -292,7 +292,6 @@
   <string name="background_location_settings_tip">כשההגדרות נפתחות, בחר \"אפשר תמיד\".</string>
   <string name="background_location_needs_for">MoshGrid משתמש במיקום ברקע עבור:</string>
   <string name="background_location_needs_bullets">- סריקת מכשירים קרובים כשהאפליקציה סגורה\n- חיבור מחדש לאחר איתחול\n- שמירה על פעילות ה-Mesh ברקע</string>
-  <string name="background_location_privacy_note">אנחנו לעולם לא אוספים או שומרים את המיקום שלך. הפרטיות שלך בטוחה.</string>
   <string name="grant_background_location">אפשר מיקום ברקע</string>
   <string name="skip_background_location">המשך ללא מיקום ברקע</string>
   <string name="open_location_settings">פתח הגדרות מיקום</string>

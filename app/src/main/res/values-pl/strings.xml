@@ -290,7 +290,6 @@
     <string name="background_location_settings_tip">Gdy otworzą się ustawienia, wybierz „Zawsze zezwalaj”.</string>
     <string name="background_location_needs_for">MoshGrid używa lokalizacji w tle do:</string>
     <string name="background_location_needs_bullets">- skanowania pobliskich urządzeń, gdy aplikacja jest zamknięta\n- ponownego łączenia po restarcie\n- utrzymywania działania sieci mesh w tle</string>
-    <string name="background_location_privacy_note">NIGDY nie gromadzimy ani nie zapisujemy Twojej lokalizacji. Twoja prywatność jest bezpieczna.</string>
     <string name="grant_background_location">Zezwól na lokalizację w tle</string>
     <string name="skip_background_location">Kontynuuj bez lokalizacji w tle</string>
     <string name="open_location_settings">Otwórz ustawienia lokalizacji</string>

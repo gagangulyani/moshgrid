@@ -315,7 +315,6 @@
   <string name="background_location_settings_tip">Apabila tetapan dibuka, pilih "Benarkan sepanjang masa".</string>
   <string name="background_location_needs_for">MoshGrid menggunakan lokasi latar belakang untuk:</string>
   <string name="background_location_needs_bullets">- mengimbas peranti berdekatan semasa apl ditutup\n- menyambung semula selepas but semula\n- mengekalkan mesh berjalan di latar belakang</string>
-  <string name="background_location_privacy_note">Kami TIDAK PERNAH mengumpul atau menyimpan lokasi anda. Privasi anda selamat.</string>
   <string name="grant_background_location">Benarkan Lokasi Latar Belakang</string>
   <string name="skip_background_location">Teruskan tanpa lokasi latar belakang</string>
   <string name="open_location_settings">Buka Tetapan Lokasi</string>

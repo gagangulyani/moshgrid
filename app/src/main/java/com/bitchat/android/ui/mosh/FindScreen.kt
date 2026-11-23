@@ -94,6 +94,7 @@ fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
     val locations by MoshRuntime.store.locations.collectAsState()
     val meeting by MoshRuntime.store.meetingPoint.collectAsState()
     val help by MoshRuntime.store.activeHelp.collectAsState()
+    val lastHeard by MoshRuntime.store.lastHeardMs.collectAsState()
     var friends by remember { mutableStateOf(MoshRuntime.friends.friends()) }
     var selected by remember { mutableStateOf(if (focusMeeting) MEETING else focusPeerID) }
     var longPress by remember { mutableStateOf<LatLng?>(null) }
@@ -128,7 +129,7 @@ fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
         } else if (target != null) {
             GuidancePanel("Finding ${target.displayName}", me, locations[target.peerID], now) { selected = null }
         } else {
-            FriendList(friends, locations, me, now) { selected = it }
+            FriendList(friends, locations, lastHeard, me, now) { selected = it }
         }
     }
 
@@ -263,7 +264,7 @@ private fun ago(ms: Long): String = when {
 private fun metres(d: Double): String = if (d < 1000) "${d.toInt()} m" else "%.1f km".format(d / 1000)
 
 @Composable
-private fun FriendList(friends: List<Friend>, locations: Map<String, LocationUpdate>, me: LocationUpdate?, now: Long, onPick: (String) -> Unit) {
+private fun FriendList(friends: List<Friend>, locations: Map<String, LocationUpdate>, lastHeard: Map<String, Long>, me: LocationUpdate?, now: Long, onPick: (String) -> Unit) {
     if (friends.isEmpty()) {
         Text("No friends yet. Add them in person from the Friends tab.", modifier = Modifier.padding(20.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -272,7 +273,7 @@ private fun FriendList(friends: List<Friend>, locations: Map<String, LocationUpd
     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
         items(friends, key = { it.peerID }) { f ->
             val l = locations[f.peerID]
-            val heard = MoshRuntime.store.lastHeardMs.value[f.peerID]
+            val heard = lastHeard[f.peerID]
             val line = when {
                 f.status == FriendStatus.WAITING_FOR_THEM -> "Waiting for them to scan you"
                 l == null -> "No location yet"

@@ -144,7 +144,8 @@ class ArtiTorManager private constructor() {
                 .setLogListener(logListener)
                 .build()
 
-            val savedMode = TorPreferenceManager.get(application)
+            // MoshGrid: with Internet off, Tor stays off whatever the saved Tor choice is.
+            val savedMode = if (com.bitchat.android.mosh.MoshNetworkGate.internetAllowed) TorPreferenceManager.get(application) else TorMode.OFF
             if (savedMode == TorMode.ON) {
                 if (currentSocksPort < DEFAULT_SOCKS_PORT) {
                     currentSocksPort = DEFAULT_SOCKS_PORT
@@ -191,7 +192,9 @@ class ArtiTorManager private constructor() {
         } ?: false
     }
 
-    suspend fun applyMode(application: Application, mode: TorMode) {
+    suspend fun applyMode(application: Application, requested: TorMode) {
+        // MoshGrid: with Internet off, any request to start Tor becomes OFF.
+        val mode = if (com.bitchat.android.mosh.MoshNetworkGate.internetAllowed) requested else TorMode.OFF
         applyMutex.withLock {
             try {
                 desiredMode = mode

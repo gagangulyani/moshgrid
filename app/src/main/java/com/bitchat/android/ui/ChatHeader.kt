@@ -740,7 +740,7 @@ private fun MainHeader(
         ) {
             // Keep the brand and trailing actions fixed. Only the nickname yields under pressure.
             BitChatBrandButton(
-                onClick = onTitleClick,
+                onClick = if (com.bitchat.android.mosh.MoshFeatures.ABOUT) onTitleClick else ({}),
                 onTripleClick = onTripleTitleClick,
                 contentDescription = stringResource(R.string.cd_open_about),
                 modifier = Modifier.size(HeaderTapTarget),

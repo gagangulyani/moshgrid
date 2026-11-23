@@ -290,7 +290,6 @@
   <string name="background_location_settings_tip">设置页面打开后，请选择"始终允许"。</string>
   <string name="background_location_needs_for">MoshGrid 使用后台位置以实现：</string>
   <string name="background_location_needs_bullets">- 应用关闭时扫描附近设备\n- 重启后重新连接\n- 使 Mesh 网络在后台持续运行</string>
-  <string name="background_location_privacy_note">我们绝不会收集或存储你的位置信息。你的隐私是安全的。</string>
   <string name="grant_background_location">允许后台位置访问</string>
   <string name="skip_background_location">不开启后台位置，继续使用</string>
   <string name="open_location_settings">打开位置设置</string>

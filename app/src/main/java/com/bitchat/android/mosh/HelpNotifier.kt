@@ -60,7 +60,17 @@ object HelpNotifier {
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify(notificationId(fromPeerID), n) }
+        val nm = NotificationManagerCompat.from(context)
+        if (!nm.areNotificationsEnabled()) {
+            // Notifications denied: the in-app Help banner still shows, but record the miss.
+            MoshMonitor.event(context, "help_notify_blocked")
+            return
+        }
+        try {
+            nm.notify(notificationId(fromPeerID), n)
+        } catch (_: SecurityException) {
+            MoshMonitor.event(context, "help_notify_blocked")
+        }
     }
 
     private fun notificationId(peerID: String) = 0x4E1F0000 or (peerID.hashCode() and 0xFFFF)
