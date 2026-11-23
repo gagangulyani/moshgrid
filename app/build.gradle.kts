@@ -26,6 +26,9 @@ require(
     "BITCHAT_GITHUB_RELEASE_CERT_SHA256 must be a SHA-256 certificate fingerprint"
 }
 
+// MoshGrid: path to the release keystore, set moshgridReleaseStoreFile in ~/.gradle/gradle.properties.
+val moshgridReleaseStoreFile: String? = providers.gradleProperty("moshgridReleaseStoreFile").orNull
+
 android {
     namespace = "com.bitchat.android"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -69,6 +72,17 @@ android {
         sourceSets.getByName("androidTest").kotlin.directories.add("src/composerAndroidTest/java")
     }
 
+    signingConfigs {
+        if (moshgridReleaseStoreFile != null) {
+            create("moshgridRelease") {
+                storeFile = file(moshgridReleaseStoreFile)
+                storePassword = providers.gradleProperty("moshgridReleaseStorePassword").orNull
+                keyAlias = providers.gradleProperty("moshgridReleaseKeyAlias").orNull
+                keyPassword = providers.gradleProperty("moshgridReleaseKeyPassword").orNull
+            }
+        }
+    }
+
     buildTypes {
         debug {
             if (composerUiTests) applicationIdSuffix = ".composerTest"
@@ -81,6 +95,9 @@ android {
             if (releaseUiTests) {
                 signingConfig = signingConfigs.getByName("debug")
                 proguardFiles("release-instrumentation.pro")
+            } else if (moshgridReleaseStoreFile != null) {
+                // MoshGrid release key, read from ~/.gradle/gradle.properties (never committed).
+                signingConfig = signingConfigs.getByName("moshgridRelease")
             }
             isMinifyEnabled = true
             isShrinkResources = true
