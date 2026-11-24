@@ -22,6 +22,7 @@ class BluetoothConnectionManager(
     
     companion object {
         private const val TAG = "BluetoothConnectionManager"
+        private const val RADIO_SETTLE_MS = 1_500L
     }
     
     // Core Bluetooth components
@@ -94,6 +95,35 @@ class BluetoothConnectionManager(
     
     // Service state
     private var isActive = false
+
+    /**
+     * MoshGrid: follow the phone's Bluetooth radio. When it goes off, every GATT connection is dead, but
+     * the tracker kept them and later refused to reconnect to those friends; when it comes back, nothing
+     * restarted advertising, the GATT server or scanning (also when the mesh started while it was off).
+     */
+    @Volatile private var wantRunning = false
+    private val radioReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context, intent: android.content.Intent) {
+            val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+            when (state) {
+                BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> if (this@BluetoothConnectionManager.isActive) {
+                    Log.i(TAG, "Bluetooth radio off: dropping tracked connections")
+                    this@BluetoothConnectionManager.isActive = false
+                    connectionScope.launch { clientManager.stop(); serverManager.stop(); connectionTracker.stop() }
+                }
+                BluetoothAdapter.STATE_ON -> if (wantRunning && !this@BluetoothConnectionManager.isActive && connectionScope.isActive) {
+                    connectionScope.launch {
+                        delay(RADIO_SETTLE_MS)
+                        // Qualified: inside launch, plain isActive is the coroutine's, which is always true here.
+                        if (wantRunning && !this@BluetoothConnectionManager.isActive) {
+                            Log.i(TAG, "Bluetooth radio back on: restarting BLE services")
+                            startServices()
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     // Delegate for callbacks
     var delegate: BluetoothConnectionManagerDelegate? = null
@@ -126,6 +156,15 @@ class BluetoothConnectionManager(
     }
 
     init {
+        try {
+            androidx.core.content.ContextCompat.registerReceiver(
+                context, radioReceiver,
+                android.content.IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not watch the Bluetooth radio: ${e.message}")
+        }
         connectionScope.launch {
             var previousMode: PowerManager.PowerMode? = null
             powerManager.profile.collect { profile ->
@@ -223,6 +262,7 @@ class BluetoothConnectionManager(
             disableTransport()
             return false
         }
+        wantRunning = true
         
         if (!permissionManager.hasBluetoothPermissions()) {
             Log.e(TAG, "Missing Bluetooth permissions")
@@ -296,6 +336,7 @@ class BluetoothConnectionManager(
      */
     fun disableTransport() {
         Log.i(TAG, "Disabling BLE transport")
+        wantRunning = false
         isActive = false
         connectionScope.launch {
             clientManager.stop()
@@ -308,7 +349,9 @@ class BluetoothConnectionManager(
      * Stop all Bluetooth services with proper cleanup
      */
     fun stopServices() {
+        wantRunning = false
         isActive = false
+        try { context.unregisterReceiver(radioReceiver) } catch (_: Exception) { }
 
         connectionScope.launch {
             // Stop component managers

@@ -192,6 +192,9 @@ class MainActivity : OrientationAwareActivity() {
         // This prevents restarting onboarding on configuration changes
         if (mainViewModel.onboardingState.value == OnboardingState.CHECKING) {
             checkOnboardingStatus()
+        } else if (savedInstanceState != null && mainViewModel.onboardingState.value == OnboardingState.INITIALIZING) {
+            // MoshGrid: the previous activity's initialization was cancelled with it; run it again.
+            initializeApp()
         }
     }
     
@@ -714,6 +717,10 @@ class MainActivity : OrientationAwareActivity() {
                 delay(500)
                 Log.i("MainActivity", "App initialization complete")
                 mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Activity recreated mid-start (text size, theme, rotation): not a failure. The new
+                // activity restarts initialization (see onCreate).
+                throw e
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to initialize app", e)
                 handleOnboardingFailed("Failed to initialize the app: ${e.message}")

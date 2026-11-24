@@ -15,12 +15,20 @@ import com.bitchat.android.R
 /** Loud notification when a friend raises Help. Breaks through Do Not Disturb only if the user allowed it. */
 object HelpNotifier {
     const val CHANNEL_ID = "mosh_help"
+    /** Same alarm channel, created after the user granted Do Not Disturb access, so it may bypass DND. */
+    const val CHANNEL_ID_DND = "mosh_help_dnd"
     const val EXTRA_OPEN_FIND = "moshgrid_open_find"
 
-    fun ensureChannel(context: Context) {
-        val nm = context.getSystemService(NotificationManager::class.java) ?: return
-        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-        val ch = NotificationChannel(CHANNEL_ID, "Help from friends", NotificationManager.IMPORTANCE_HIGH).apply {
+    /**
+     * Android fixes a channel's DND bypass when the channel is created, and honours it only if the app
+     * has Do Not Disturb access at that moment. So once access is granted, Help moves to a second
+     * channel created with access; the first channel is kept for users who never grant it.
+     */
+    fun ensureChannel(context: Context): String {
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return CHANNEL_ID
+        val id = if (nm.isNotificationPolicyAccessGranted) CHANNEL_ID_DND else CHANNEL_ID
+        if (nm.getNotificationChannel(id) != null) return id
+        val ch = NotificationChannel(id, "Help from friends", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "A friend asked for help"
             setBypassDnd(true)
             enableVibration(true)
@@ -30,6 +38,8 @@ object HelpNotifier {
             )
         }
         nm.createNotificationChannel(ch)
+        if (id == CHANNEL_ID_DND) runCatching { nm.deleteNotificationChannel(CHANNEL_ID) }
+        return id
     }
 
     fun onReceived(context: Context, fromPeerID: String, p: MoshPayload) {
@@ -41,7 +51,7 @@ object HelpNotifier {
     }
 
     private fun show(context: Context, fromPeerID: String, alert: HelpAlert) {
-        ensureChannel(context)
+        val channel = ensureChannel(context)
         val name = MoshRuntime.friends.displayName(fromPeerID) ?: "A friend"
         val where = if (HelpRepeater.isLocationUnknown(alert)) "Location unknown." else "Tap to see where."
         val body = listOf(alert.note.takeIf { it.isNotBlank() }, where).filterNotNull().joinToString(" ")
@@ -50,7 +60,7 @@ object HelpNotifier {
             Intent(context, MainActivity::class.java).putExtra(EXTRA_OPEN_FIND, fromPeerID).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val n = NotificationCompat.Builder(context, CHANNEL_ID)
+        val n = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("$name needs help")
             .setContentText(body)

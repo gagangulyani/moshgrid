@@ -475,8 +475,15 @@ class UnifiedMeshService(
     }
 
     private fun isBleConnected(peerID: String): Boolean {
+        // MoshGrid: peer entries outlive the radio for a while; with Bluetooth off nothing can be sent,
+        // and claiming otherwise would skip the Nostr fallback.
+        if (!bluetoothRadioOn()) return false
         return try { bluetooth.getPeerInfo(peerID)?.isConnected == true } catch (_: Exception) { false }
     }
+
+    private fun bluetoothRadioOn(): Boolean = try {
+        (context.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter?.isEnabled == true
+    } catch (_: Exception) { false }
 
     private fun isWifiConnected(peerID: String): Boolean {
         return try { wifiService()?.getPeerInfo(peerID)?.isConnected == true } catch (_: Exception) { false }

@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -150,17 +151,19 @@ fun FriendsScreen(onAddFriend: () -> Unit, onChat: (String) -> Unit) {
             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn {
             items(friends, key = { it.peerID }) { f ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(f.displayName, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                        Text(if (f.status == FriendStatus.WAITING_FOR_THEM) "Waiting for them to scan you" else "Friends",
-                            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Name on its own line, controls below: stays readable at large text sizes.
+                Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                    Text(f.displayName, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    Text(if (f.status == FriendStatus.WAITING_FOR_THEM) "Waiting for them to scan you" else "Friends",
+                        fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { onChat(f.peerID) }) { Text("Chat") }
+                        Spacer(Modifier.weight(1f))
+                        Text("Share location", fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp))
+                        Switch(checked = f.peerID !in paused, onCheckedChange = { on ->
+                            MoshRuntime.prefs.setPaused(f.peerID, !on); paused = MoshRuntime.prefs.pausedFriends
+                        })
                     }
-                    TextButton(onClick = { onChat(f.peerID) }) { Text("Chat") }
-                    Text("Share location", fontSize = 12.sp, modifier = Modifier.padding(end = 6.dp))
-                    Switch(checked = f.peerID !in paused, onCheckedChange = { on ->
-                        MoshRuntime.prefs.setPaused(f.peerID, !on); paused = MoshRuntime.prefs.pausedFriends
-                    })
                 }
             }
         }

@@ -21,6 +21,8 @@
     
     <!-- Notification permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- MoshGrid: lets the user allow Help alarms through Do Not Disturb. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <!-- Wi‑Fi / Wi‑Fi Aware permissions (also used for hotspot APK sharing) -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />

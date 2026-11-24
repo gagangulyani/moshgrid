@@ -17,6 +17,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -115,7 +116,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFindFor: String? = null) {
         }
         NavigationBar {
             Tab.entries.forEach { t ->
-                NavigationBarItem(selected = tab == t, onClick = { if (t != Tab.FIND) findMeeting = false; tab = t }, icon = {}, label = { Text(t.label, fontWeight = FontWeight.Bold) })
+                NavigationBarItem(selected = tab == t, onClick = { if (t != Tab.FIND) findMeeting = false; tab = t }, icon = {}, label = { Text(t.label, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) })
             }
         }
     }
@@ -139,7 +140,8 @@ fun SettingsScreen() {
     var internet by remember { mutableStateOf(prefs.internet) }
     var share by remember { mutableStateOf(prefs.shareLocation) }
     var monitoring by remember { mutableStateOf(prefs.monitoringOptIn) }
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    // Scrolls so large text sizes never hide the last settings.
+    Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(16.dp)) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Text("Networks", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
         CheckRow("Bluetooth (phone to phone)", bluetooth) { bluetooth = it; prefs.bluetooth = it; com.bitchat.android.mosh.MoshNetworkGate.apply(context, prefs) }
