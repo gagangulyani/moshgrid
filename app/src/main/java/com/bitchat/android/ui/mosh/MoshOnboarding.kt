@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -37,8 +38,10 @@ import com.bitchat.android.mosh.MoshPrefs
 
 /** One checklist screen: networks, what Internet means, battery steps, Help alarm access, monitoring. */
 @Composable
-fun MoshOnboarding(prefs: MoshPrefs, onDone: () -> Unit) {
+fun MoshOnboarding(prefs: MoshPrefs, currentName: String = "", onName: (String) -> Unit = {}, onDone: () -> Unit) {
     val context = LocalContext.current
+    // Friends see this name (it travels in the QR code). Upstream's random "anon1234" helps nobody.
+    var name by remember { mutableStateOf(currentName.takeUnless { it.isBlank() || it.startsWith("anon") }.orEmpty()) }
     var bluetooth by remember { mutableStateOf(prefs.bluetooth) }
     var internet by remember { mutableStateOf(prefs.internet) }
     var monitoring by remember { mutableStateOf(prefs.monitoringOptIn) }
@@ -54,11 +57,19 @@ fun MoshOnboarding(prefs: MoshPrefs, onDone: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
+        Section("Your name")
+        androidx.compose.material3.OutlinedTextField(
+            value = name, onValueChange = { name = it.take(24) }, singleLine = true,
+            label = { Text("What your friends call you") }, modifier = Modifier.fillMaxWidth(),
+        )
+        Text("Friends see it when you ask for help. Set it before you scan each other's codes.",
+            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
         Section("How should MoshGrid reach your friends?")
         CheckRow("Bluetooth: phone to phone, works with no signal", bluetooth) { bluetooth = it }
         CheckRow("Internet: when there is signal", internet) { internet = it }
         Text(
-            if (internet) "Internet uses public Nostr relays. Messages are encrypted, but relays can see that you are sending and when."
+            if (internet) "Internet uses public Nostr relays. Messages are encrypted, but relays can see your internet address and when you send."
             else "Offline only: nothing leaves your phone except over Bluetooth to nearby phones.",
             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -96,8 +107,11 @@ fun MoshOnboarding(prefs: MoshPrefs, onDone: () -> Unit) {
             color = MaterialTheme.colorScheme.error)
 
         Spacer(Modifier.height(4.dp))
+        if (name.isBlank()) Text("Enter your name to start.", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         Button(
+            enabled = name.isNotBlank(),
             onClick = {
+                onName(name.trim())
                 prefs.bluetooth = bluetooth; prefs.internet = internet
                 prefs.monitoringOptIn = monitoring; prefs.shareLocation = share
                 prefs.onboardingDone = true
@@ -116,8 +130,9 @@ private fun Section(title: String) {
 
 @Composable
 internal fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = checked, onCheckedChange = onChange)
+    // The whole row toggles, and screen readers read the label with the box.
+    Row(androidx.compose.ui.Modifier.fillMaxWidth().toggleable(value = checked, role = androidx.compose.ui.semantics.Role.Checkbox, onValueChange = onChange).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = null)
         Text(label, fontSize = 15.sp)
     }
 }

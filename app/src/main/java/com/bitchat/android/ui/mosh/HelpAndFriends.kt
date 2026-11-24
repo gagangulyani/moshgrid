@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
@@ -39,6 +40,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bitchat.android.mosh.FriendStatus
@@ -74,7 +78,7 @@ fun HelpScreen(onClose: () -> Unit) {
             Text("Ask for help", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(onClick = onClose) { Text("Close") }
         }
-        val friendCount = remember { MoshRuntime.friends.friends().size }
+        val friendCount = remember { MoshRuntime.mutualFriends().size }
         if (active) {
             // Honest status: who it went to and how. A Bluetooth send has no receipt, so say "sent", not "received".
             var routes by remember { mutableStateOf(MoshRuntime.help.lastRoutes) }
@@ -90,14 +94,16 @@ fun HelpScreen(onClose: () -> Unit) {
             }
         } else {
             if (friendCount == 0) {
-                Text("You have no friends added, so nobody will get this. In danger, call 112.",
+                Text("No friend has scanned you back yet, so nobody will get this. In danger, call 112.",
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
             }
             OutlinedTextField(value = note, onValueChange = { note = it.take(120) },
                 label = { Text("What to look for (optional)") }, modifier = Modifier.fillMaxWidth())
             Text("Hold for $HOLD_SECONDS seconds. Let go to stop.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Box(
-                Modifier.size(220.dp).background(HelpRed, CircleShape).pointerInput(Unit) {
+                Modifier.size(220.dp).background(HelpRed, CircleShape)
+                    .semantics { role = androidx.compose.ui.semantics.Role.Button; contentDescription = "Help. Hold for $HOLD_SECONDS seconds." }
+                    .pointerInput(Unit) {
                     detectTapGestures(onPress = { holding = true; tryAwaitRelease(); holding = false })
                 },
                 contentAlignment = Alignment.Center,
@@ -121,7 +127,7 @@ internal data class HelpStatus(val headline: String, val lines: List<String>, va
 /** Turns per-friend routes into plain words. Names come from the friend list. */
 internal fun helpStatus(routes: Map<String, com.bitchat.android.mosh.MoshRoute>,
                         name: (String) -> String = { MoshRuntime.friends.displayName(it) ?: "A friend" }): HelpStatus {
-    if (routes.isEmpty()) return HelpStatus("Nobody to send to: you have no friends added.", emptyList(), false)
+    if (routes.isEmpty()) return HelpStatus("Nobody to send to: no friend has scanned you back yet.", emptyList(), false)
     fun how(r: com.bitchat.android.mosh.MoshRoute) = when (r) {
         com.bitchat.android.mosh.MoshRoute.MESH -> "Bluetooth"
         com.bitchat.android.mosh.MoshRoute.MESH_AND_NOSTR -> "Bluetooth and internet"
@@ -129,13 +135,18 @@ internal fun helpStatus(routes: Map<String, com.bitchat.android.mosh.MoshRoute>,
         else -> null
     }
     val sent = routes.filter { how(it.value) != null }
-    val missed = routes.keys - sent.keys
+    val waiting = routes.filter { it.value == com.bitchat.android.mosh.MoshRoute.QUEUED }
+    val missed = routes.keys - sent.keys - waiting.keys
     val lines = buildList {
         if (sent.isNotEmpty()) add("Sent to " + sent.entries.joinToString { "${name(it.key)} (${how(it.value)})" })
+        if (waiting.isNotEmpty()) add("Waiting for signal, sends as soon as you are online: " + waiting.keys.joinToString { name(it) })
         if (missed.isNotEmpty()) add("Not reachable right now: " + missed.joinToString { name(it) })
     }
-    return if (sent.isEmpty()) HelpStatus("Not sent yet: no friend nearby and no internet.", lines, false)
-    else HelpStatus("Help sent.", lines, true)
+    return when {
+        sent.isNotEmpty() -> HelpStatus("Help sent.", lines, true)
+        waiting.isNotEmpty() -> HelpStatus("Not sent yet: no signal and no friend nearby.", lines, false)
+        else -> HelpStatus("Not sent yet: no friend nearby and no internet.", lines, false)
+    }
 }
 
 /** Friends list with status, location pause, and the way to add someone in person. */
@@ -143,10 +154,19 @@ internal fun helpStatus(routes: Map<String, com.bitchat.android.mosh.MoshRoute>,
 fun FriendsScreen(onAddFriend: () -> Unit, onChat: (String) -> Unit) {
     var friends by remember { mutableStateOf(MoshRuntime.friends.friends()) }
     var paused by remember { mutableStateOf(MoshRuntime.prefs.pausedFriends) }
+    var removing by remember { mutableStateOf<com.bitchat.android.mosh.Friend?>(null) }
+    val context = LocalContext.current
     LaunchedEffect(Unit) { while (true) { delay(5_000); friends = MoshRuntime.friends.friends() } }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Friends", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Button(onClick = onAddFriend, modifier = Modifier.fillMaxWidth()) { Text("Add a friend in person (QR)") }
+        val mutual = friends.count { it.status == FriendStatus.FRIEND }
+        Text(
+            if (friends.isEmpty()) "Help reaches nobody yet." else "Help reaches $mutual of ${friends.size} friends." +
+                if (mutual < friends.size) " The rest still need to scan your code." else "",
+            fontWeight = FontWeight.Bold,
+            color = if (mutual == 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        )
         Text("Stand next to each other and scan each other's code. Both of you need to scan.",
             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn {
@@ -158,14 +178,32 @@ fun FriendsScreen(onAddFriend: () -> Unit, onChat: (String) -> Unit) {
                         fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = { onChat(f.peerID) }) { Text("Chat") }
+                        TextButton(onClick = { removing = f }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
                         Spacer(Modifier.weight(1f))
-                        Text("Share location", fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp))
-                        Switch(checked = f.peerID !in paused, onCheckedChange = { on ->
+                        val sharing = f.peerID !in paused
+                        Row(Modifier.toggleable(value = sharing, role = androidx.compose.ui.semantics.Role.Switch) { on ->
                             MoshRuntime.prefs.setPaused(f.peerID, !on); paused = MoshRuntime.prefs.pausedFriends
-                        })
+                        }, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Share location", fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp))
+                            Switch(checked = sharing, onCheckedChange = null)
+                        }
                     }
                 }
             }
         }
+    }
+    removing?.let { f ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove ${f.displayName}?") },
+            text = { Text("They will stop getting your location, Help and meeting points. To add them again, you both scan each other's codes in person.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    MoshRuntime.removeFriend(context, f)
+                    friends = MoshRuntime.friends.friends(); removing = null
+                }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+        )
     }
 }

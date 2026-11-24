@@ -14,4 +14,11 @@ object MoshFeatures {
     const val GEOHASH = false
     /** Upstream About sheet: describes bitchat features MoshGrid hides. Triple-tap wipe still works. */
     const val ABOUT = false
+    /** Favourite star in a chat: in MoshGrid it would add or remove a friend with one tap. */
+    const val FAVORITE_STAR = false
+    /**
+     * Upstream blocks the whole app with a setup screen when Bluetooth or Location is off, also when
+     * coming back to the app. MoshGrid keeps the app (and the Help button) open and shows a banner.
+     */
+    const val BLOCK_ON_RADIO_OFF = false
 }

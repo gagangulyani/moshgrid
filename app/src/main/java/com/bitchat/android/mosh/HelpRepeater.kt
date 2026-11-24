@@ -16,6 +16,12 @@ class HelpRepeater(
     private val position: () -> LocationUpdate?,
     private val send: (MoshPayload) -> Map<String, MoshRoute>,
     private val persistence: HelpOutboxPersistence? = null,
+    /**
+     * Bluetooth-only send for the long tail of cancel repeats. A friend who got the Help over
+     * Bluetooth and then drifted away may only be reachable again hours later; without the cancel
+     * they would keep searching for someone who is fine. Null keeps the 15-minute window only.
+     */
+    private val lateResend: QuietResend? = null,
 ) {
     private var alertId: String? = null
     private var note: String = ""
@@ -64,8 +70,20 @@ class HelpRepeater(
             return
         }
         val cancelled = cancelledId ?: return
-        if (now - cancelledAtMs > CANCEL_REPEAT_FOR_MS) {
+        val age = now - cancelledAtMs
+        val quiet = lateResend
+        val late = age > CANCEL_REPEAT_FOR_MS
+        if ((late && quiet == null) || age > CANCEL_MESH_REPEAT_FOR_MS) {
             cancelledId = null; save(); return
+        }
+        if (late && quiet != null) {
+            // After 15 minutes: Bluetooth every few minutes, the internet once, so no traffic piles up.
+            if (resumeDue || now - lastSentMs >= LATE_CANCEL_REPEAT_MS) {
+                resumeDue = false
+                lastSentMs = now
+                quiet.send(HelpCancel(cancelled, cancelledAtMs), "c|$cancelled")
+            }
+            return
         }
         if (due) {
             resumeDue = false
@@ -84,6 +102,18 @@ class HelpRepeater(
         save()
         lastSentMs = now
         lastRoutes = send(HelpCancel(id, now))
+    }
+
+    /**
+     * Panic wipe: one last cancel so friends stop looking (best effort, the identity is about to
+     * go), then forget the alert, its cancel and the saved copy.
+     */
+    @Synchronized
+    fun wipe() {
+        alertId?.let { send(HelpCancel(it, clock())) }
+        alertId = null; note = ""; cancelledId = null; cancelledAtMs = 0L
+        resumeDue = false; lastRoutes = emptyMap(); lastSentAtMs = 0L
+        persistence?.save(null)
     }
 
     private fun save() {
@@ -115,6 +145,9 @@ class HelpRepeater(
         const val REPEAT_MS = 120_000L
         const val FAST_REPEAT_MS = 60_000L
         const val CANCEL_REPEAT_FOR_MS = 15 * 60_000L
+        /** Bluetooth-only cancel repeats continue this long after a cancel. */
+        const val CANCEL_MESH_REPEAT_FOR_MS = 3 * 3_600_000L
+        const val LATE_CANCEL_REPEAT_MS = 180_000L
         /** Accuracy used when the phone has no fix yet. Receivers show "location unknown". */
         const val UNKNOWN_ACCURACY_M = 1_000_000f
         /** How far someone may have walked since an old fix, for the uncertainty circle. */

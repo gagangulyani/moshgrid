@@ -54,4 +54,10 @@ class FriendRegistryTest {
         assertEquals("Priya", r.displayName("peer-a"))
         assertNull(r.displayName("someone-else"))
     }
+
+    @Test
+    fun blank_nickname_gets_a_readable_name() {
+        val r = registry(rel(true, true, name = "  "), setOf(fpA))
+        assertEquals("Friend peer", r.displayName("peer-a"))
+    }
 }

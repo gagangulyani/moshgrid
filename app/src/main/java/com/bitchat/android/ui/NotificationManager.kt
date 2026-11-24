@@ -181,6 +181,12 @@ class NotificationManager(
      */
     fun showPrivateMessageNotification(senderPeerID: String, senderNickname: String, messageContent: String) {
         val conversationID = ContactDirectory.canonicalConversationId(senderPeerID)
+        // MoshGrid sends no name in clear, so the sender's nickname is usually blank: use the friend's name.
+        // The name from the QR scan wins: a nickname in a packet can be anyone's.
+        val senderNickname = com.bitchat.android.mosh.MoshRuntime.friendNameFor(senderPeerID)
+            ?: com.bitchat.android.mosh.MoshRuntime.friendNameFor(conversationID)
+            ?: senderNickname.takeIf { it.isNotBlank() }?.let { "$it (not a friend)" }
+            ?: "Not a friend"
         if (conversationPreferences.isMuted(conversationID)) {
             Log.d(TAG, "Skipping muted conversation notification")
             return
@@ -364,15 +370,20 @@ class NotificationManager(
         person: Person,
         contentIntent: Intent
     ) {
-        val shortcut = ShortcutInfoCompat.Builder(context, shortcutID)
-            .setShortLabel(person.name?.toString()?.take(40).orEmpty())
-            .setLongLived(true)
-            .setPerson(person)
-            .setLocusId(LocusIdCompat(shortcutID))
-            .setIcon(IconCompat.createWithResource(context, R.drawable.ic_notification))
-            .setIntent(Intent(contentIntent).apply { action = Intent.ACTION_VIEW })
-            .build()
-        ShortcutManagerCompat.pushDynamicShortcut(context, shortcut)
+        // A shortcut is cosmetic; it must never take the app (and the mesh) down.
+        try {
+            val shortcut = ShortcutInfoCompat.Builder(context, shortcutID)
+                .setShortLabel(person.name?.toString()?.take(40)?.takeIf { it.isNotBlank() } ?: "Friend")
+                .setLongLived(true)
+                .setPerson(person)
+                .setLocusId(LocusIdCompat(shortcutID))
+                .setIcon(IconCompat.createWithResource(context, R.drawable.ic_notification))
+                .setIntent(Intent(contentIntent).apply { action = Intent.ACTION_VIEW })
+                .build()
+            ShortcutManagerCompat.pushDynamicShortcut(context, shortcut)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Conversation shortcut not published: ${e.javaClass.simpleName}")
+        }
     }
 
     fun showVerificationNotification(title: String, body: String, peerID: String? = null) {

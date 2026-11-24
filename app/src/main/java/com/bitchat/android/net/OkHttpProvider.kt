@@ -61,6 +61,9 @@ object OkHttpProvider {
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)
+                // MoshGrid: on jammed mobile data a socket can look open long after it died. A ping
+                // every 20 s closes it, so the relay shows as down and Help says "waiting for signal".
+                .pingInterval(20, TimeUnit.SECONDS)
                 .build()
                 .also(wsClientRef::set)
         }

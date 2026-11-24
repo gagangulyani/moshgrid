@@ -62,6 +62,13 @@ class MainActivity : OrientationAwareActivity() {
     private lateinit var unifiedMeshService: MeshService
     private val mainViewModel: MainViewModel by viewModels()
     private var pendingMeshForegroundServiceStart = false
+    /** MoshGrid: a Help notification was tapped. The timestamp makes a repeat tap a new request. */
+    private val openFindRequest = androidx.compose.runtime.mutableStateOf<Pair<String, Long>?>(null)
+
+    private fun takeOpenFindRequest(intent: Intent?) {
+        val peer = intent?.getStringExtra(com.bitchat.android.mosh.HelpNotifier.EXTRA_OPEN_FIND) ?: return
+        openFindRequest.value = peer to System.nanoTime()
+    }
     private val chatViewModel: ChatViewModel by viewModels { 
         object : ViewModelProvider.Factory {
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
@@ -82,6 +89,7 @@ class MainActivity : OrientationAwareActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) takeOpenFindRequest(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             this.setRecentsScreenshotEnabled(false)
         }
@@ -317,7 +325,7 @@ class MainActivity : OrientationAwareActivity() {
 
             OnboardingState.CHECKING, OnboardingState.INITIALIZING, OnboardingState.COMPLETE -> {
                 // Set up back navigation handling for the chat screen
-                val backCallback = object : OnBackPressedCallback(true) {
+                val backCallback = androidx.compose.runtime.remember { object : OnBackPressedCallback(true) {
                     override fun handleOnBackPressed() {
                         // Let ChatViewModel handle navigation state
                         val handled = chatViewModel.handleBackPressed()
@@ -329,14 +337,18 @@ class MainActivity : OrientationAwareActivity() {
                             this.isEnabled = true
                         }
                     }
-                }
+                } }
 
-                // Add the callback - this will be automatically removed when the activity is destroyed
-                onBackPressedDispatcher.addCallback(this, backCallback)
+                // Register once per composition entry. Adding it on every recomposition stacked
+                // duplicates above MoshGrid's own back handling.
+                androidx.compose.runtime.DisposableEffect(backCallback) {
+                    onBackPressedDispatcher.addCallback(this@MainActivity, backCallback)
+                    onDispose { backCallback.remove() }
+                }
                 // MoshGrid: setup checklist on first run, then Chats / Find / Friends / Settings + Help.
                 com.bitchat.android.ui.mosh.MoshShell(
                     chatViewModel = chatViewModel,
-                    openFindFor = intent?.getStringExtra(com.bitchat.android.mosh.HelpNotifier.EXTRA_OPEN_FIND)
+                    openFind = openFindRequest.value
                 )
             }
             
@@ -413,6 +425,11 @@ class MainActivity : OrientationAwareActivity() {
                 checkLocationAndProceed()
             }
             BluetoothStatus.DISABLED -> {
+                if (!com.bitchat.android.mosh.MoshFeatures.BLOCK_ON_RADIO_OFF) {
+                    // MoshGrid: open the app anyway (Help must stay one tap away); a banner offers to turn it on.
+                    checkLocationAndProceed()
+                    return
+                }
                 // Show Bluetooth enable screen (should have permissions as existing user)
                 mainViewModel.updateOnboardingState(OnboardingState.BLUETOOTH_CHECK)
                 mainViewModel.updateBluetoothLoading(false)
@@ -483,6 +500,11 @@ class MainActivity : OrientationAwareActivity() {
                 checkBatteryOptimizationAndProceed()
             }
             LocationStatus.DISABLED -> {
+                if (!com.bitchat.android.mosh.MoshFeatures.BLOCK_ON_RADIO_OFF) {
+                    // MoshGrid: open the app anyway; a banner offers to turn Location on.
+                    checkBatteryOptimizationAndProceed()
+                    return
+                }
                 // Show location enable screen (should have permissions as existing user)
                 mainViewModel.updateOnboardingState(OnboardingState.LOCATION_CHECK)
                 mainViewModel.updateLocationLoading(false)
@@ -514,6 +536,9 @@ class MainActivity : OrientationAwareActivity() {
         Log.w("MainActivity", "Location services disabled or failed: $message")
         mainViewModel.updateLocationLoading(false)
         mainViewModel.updateLocationStatus(locationStatusManager.checkLocationStatus())
+        // MoshGrid: never pull a running app (perhaps on the Help screen) back to a setup screen.
+        if (!com.bitchat.android.mosh.MoshFeatures.BLOCK_ON_RADIO_OFF &&
+            mainViewModel.onboardingState.value == OnboardingState.COMPLETE) return
 
         when {
             mainViewModel.locationStatus.value == LocationStatus.NOT_AVAILABLE -> {
@@ -535,7 +560,10 @@ class MainActivity : OrientationAwareActivity() {
         Log.w("MainActivity", "Bluetooth disabled or failed: $message")
         mainViewModel.updateBluetoothLoading(false)
         mainViewModel.updateBluetoothStatus(bluetoothStatusManager.checkBluetoothStatus())
-        
+        // MoshGrid: never pull a running app (perhaps on the Help screen) back to a setup screen.
+        if (!com.bitchat.android.mosh.MoshFeatures.BLOCK_ON_RADIO_OFF &&
+            mainViewModel.onboardingState.value == OnboardingState.COMPLETE) return
+
         when {
             mainViewModel.bluetoothStatus.value == BluetoothStatus.NOT_SUPPORTED -> {
                 // Show permanent error for unsupported devices
@@ -731,6 +759,7 @@ class MainActivity : OrientationAwareActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        takeOpenFindRequest(intent)
         
         // Check if this is a quit request from the notification
         if (intent.getBooleanExtra("ACTION_QUIT_APP", false)) {
@@ -768,7 +797,7 @@ class MainActivity : OrientationAwareActivity() {
             // Check if Bluetooth was disabled while app was backgrounded
             val currentBluetoothStatus = bluetoothStatusManager.checkBluetoothStatus()
             val bleRequired = try { com.bitchat.android.ui.debug.DebugPreferenceManager.getBleEnabled(true) } catch (_: Exception) { true }
-            if (bleRequired && currentBluetoothStatus != BluetoothStatus.ENABLED && !mainViewModel.isBluetoothCheckSkipped.value) {
+            if (com.bitchat.android.mosh.MoshFeatures.BLOCK_ON_RADIO_OFF && bleRequired && currentBluetoothStatus != BluetoothStatus.ENABLED && !mainViewModel.isBluetoothCheckSkipped.value) {
                 Log.w("MainActivity", "Bluetooth disabled while app was backgrounded")
                 mainViewModel.updateBluetoothStatus(currentBluetoothStatus)
                 mainViewModel.updateOnboardingState(OnboardingState.BLUETOOTH_CHECK)
@@ -778,7 +807,7 @@ class MainActivity : OrientationAwareActivity() {
             
             // Check if location services were disabled while app was backgrounded
             val currentLocationStatus = locationStatusManager.checkLocationStatus()
-            if (currentLocationStatus != LocationStatus.ENABLED) {
+            if (com.bitchat.android.mosh.MoshFeatures.BLOCK_ON_RADIO_OFF && currentLocationStatus != LocationStatus.ENABLED) {
                 Log.w("MainActivity", "Location services disabled while app was backgrounded")
                 mainViewModel.updateLocationStatus(currentLocationStatus)
                 mainViewModel.updateOnboardingState(OnboardingState.LOCATION_CHECK)

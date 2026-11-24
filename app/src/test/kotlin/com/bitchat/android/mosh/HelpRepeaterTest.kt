@@ -3,6 +3,7 @@ package com.bitchat.android.mosh
 import com.bitchat.android.ui.mosh.helpStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -72,7 +73,7 @@ class HelpRepeaterTest {
 
     @Test fun status_with_no_friends_says_nobody() {
         val s = helpStatus(emptyMap()) { it }
-        assertFalse(s.reachedAnyone); assertTrue(s.headline.contains("no friends"))
+        assertFalse(s.reachedAnyone); assertTrue(s.headline.startsWith("Nobody to send to"))
     }
 
     @Test fun status_with_nobody_reachable_does_not_claim_success() {
@@ -84,5 +85,37 @@ class HelpRepeaterTest {
         val s = helpStatus(mapOf("ana" to MoshRoute.MESH_AND_NOSTR, "ben" to MoshRoute.NONE)) { it }
         assertTrue(s.reachedAnyone)
         assertEquals(listOf("Sent to ana (Bluetooth and internet)", "Not reachable right now: ben"), s.lines)
+    }
+
+    @Test fun wipe_tells_friends_once_then_forgets_everything() {
+        val store = object : HelpOutboxPersistence {
+            var saved: HelpOutbox? = null
+            override fun load() = saved
+            override fun save(o: HelpOutbox?) { saved = o }
+        }
+        val w = HelpRepeater({ now }, { pos }, { sent += it; mapOf("ana" to MoshRoute.MESH) }, store)
+        val id = w.raise("")
+        w.wipe()
+        assertEquals(HelpCancel(id, 0), sent.last())
+        assertNull(w.activeAlertId); assertNull(store.saved); assertTrue(w.lastRoutes.isEmpty())
+        val count = sent.size
+        now = 10 * 60_000; w.tick()
+        assertEquals(count, sent.size)
+        assertNull(HelpRepeater({ now }, { pos }, { emptyMap() }, store).activeAlertId)
+    }
+
+    @Test fun cancel_keeps_repeating_over_bluetooth_for_3_hours() {
+        val mesh = mutableListOf<MoshPayload>()
+        val w = HelpRepeater({ now }, { pos }, { sent += it; mapOf("ana" to MoshRoute.NONE) }, null,
+            QuietResend({ listOf("ana") }) { p, _, meshOnly -> if (meshOnly) { mesh += p; MoshRoute.MESH } else MoshRoute.NONE })
+        val id = w.raise(""); w.cancel()
+        val fullSends = sent.size
+        now = HelpRepeater.CANCEL_REPEAT_FOR_MS + 1; w.tick()
+        assertEquals("late repeats must not use the internet", fullSends, sent.size)
+        assertEquals(HelpCancel(id, 0), mesh.last())
+        now += HelpRepeater.LATE_CANCEL_REPEAT_MS; w.tick(); assertEquals(2, mesh.size)
+        now = HelpRepeater.CANCEL_MESH_REPEAT_FOR_MS + 1; w.tick()
+        val n = mesh.size
+        now += 10 * HelpRepeater.LATE_CANCEL_REPEAT_MS; w.tick(); assertEquals(n, mesh.size)
     }
 }

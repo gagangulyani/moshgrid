@@ -197,7 +197,7 @@ class OnboardingCoordinator(
             deniedPermissions.forEach { permission ->
                 append("- ${getPermissionDisplayName(permission)}\n")
             }
-            append("\nbitchat may not work properly without all permissions.")
+            append("\nMoshGrid may not work properly without all permissions.")
         }
         
         Log.w(TAG, "Partial permissions granted: $message")
@@ -215,11 +215,12 @@ class OnboardingCoordinator(
         
         if (deniedCritical.isNotEmpty()) {
             val message = buildString {
-                append("Critical permissions were denied. bitchat requires these permissions to function:\n")
-                deniedCritical.keys.forEach { permission ->
-                    append("- ${getPermissionDisplayName(permission)}\n")
+                append("MoshGrid needs these permissions to find your friends:\n")
+                // Several Android permissions share one name (three Bluetooth, two location): list each once.
+                deniedCritical.keys.map { getPermissionDisplayName(it) }.distinct().forEach { name ->
+                    append("- $name\n")
                 }
-                append("\nPlease grant these permissions in Settings to use bitchat.")
+                append("\nAllow them in Settings, then tap Try Again.")
             }
             
             Log.e(TAG, "Critical permissions denied: $deniedCritical")

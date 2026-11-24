@@ -252,7 +252,15 @@ class NostrTransport(
     }
     
     /** MoshGrid: send a friend-only payload over Nostr when no mesh path exists. */
-    fun sendMoshPayload(payload: com.bitchat.android.model.NoisePayload, to: String) {
+    /**
+     * Sends a MoshGrid payload over Nostr. Returns false, sending nothing, when the friend's Nostr
+     * key or our own identity is not known yet, so the caller never reports an internet send that
+     * could not happen. True means handed to the relay queue (delivered once a relay is reachable).
+     */
+    fun sendMoshPayload(payload: com.bitchat.android.model.NoisePayload, to: String): Boolean {
+        // Only the cheap key lookup runs on the caller's thread (often the main thread, at the moment
+        // Help is raised). Our own identity needs the Keystore, so it is loaded in the coroutine.
+        if (resolveNostrPublicKey(to) == null) return false
         transportScope.launch {
             try {
                 val recipientNostrPubkey = resolveNostrPublicKey(to) ?: return@launch
@@ -268,6 +276,7 @@ class NostrTransport(
                 Log.e(TAG, "Failed to send MoshGrid payload via Nostr: ${e.message}")
             }
         }
+        return true
     }
 
     fun sendDeliveryAck(messageID: String, to: String) {

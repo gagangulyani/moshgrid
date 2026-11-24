@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,7 +30,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,6 +55,9 @@ import com.bitchat.android.mosh.MeetingPoint
 import com.bitchat.android.mosh.MoshRuntime
 import com.bitchat.android.mosh.Venue
 import com.bitchat.android.mosh.VenueRegistry
+import com.bitchat.android.mosh.compassWords
+import com.bitchat.android.mosh.fitBox
+import com.bitchat.android.mosh.headingFromRotationMatrix
 import com.bitchat.android.mosh.directionWords
 import com.bitchat.android.mosh.distanceM
 import com.bitchat.android.mosh.guidance
@@ -102,15 +106,28 @@ fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
     LaunchedEffect(Unit) {
         while (true) { delay(5_000); now = System.currentTimeMillis(); friends = MoshRuntime.friends.friends() }
     }
-    val venue = remember(me == null) { me?.let { VenueRegistry.nearest(it.lat, it.lon, venues) } ?: venues.firstOrNull() }
+    val pins = buildPins(friends, locations, me, meeting, help, now, selected)
+    // Draw the venue around me, else around a friend; with nobody located yet, preview the first venue.
+    val venue = VenueRegistry.around(pins.sortedByDescending { it.color == CYAN }.map { it.lat to it.lon }, venues)
+        ?: venues.firstOrNull().takeIf { pins.isEmpty() }
+    var fitRequest by remember { mutableIntStateOf(0) }
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().weight(1f)) {
             VenueMap(
                 venue = venue,
-                pins = buildPins(friends, locations, me, meeting, help, now),
+                pins = pins,
+                fitRequest = fitRequest,
                 onLongPress = { longPress = it },
             )
+            if (pins.isNotEmpty()) {
+                TextButton(
+                    onClick = { fitRequest++ },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                        .background(Color(0xCC000000), RoundedCornerShape(12.dp)),
+                ) { Text("Show everyone", color = Color.White) }
+            }
+            MapLegend(pins, Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 22.dp))
             Text(
                 "© OpenStreetMap contributors",
                 fontSize = 10.sp, color = Color(0xFF9E9E9E),
@@ -151,27 +168,45 @@ fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
     }
 }
 
-private data class Pin(val lat: Double, val lon: Double, val color: String, val radius: Float)
+/** [stroke] is white for whoever is being found, so they stand out among several friends. */
+private data class Pin(val lat: Double, val lon: Double, val color: String, val radius: Float, val stroke: String = "#000000")
+
+/** What each colour means, for the colours on the map right now. */
+@Composable
+private fun MapLegend(pins: List<Pin>, modifier: Modifier) {
+    val shown = pins.map { it.color }.toSet()
+    val entries = listOf(CYAN to "You", PINK to "Friend", GREY to "Old location", RED to "Help", ACID to "Meeting point")
+        .filter { it.first in shown }
+    if (entries.isEmpty()) return
+    Row(modifier.background(Color(0xCC000000), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        entries.forEach { (color, label) ->
+            Box(Modifier.size(10.dp).background(Color(android.graphics.Color.parseColor(color)), androidx.compose.foundation.shape.CircleShape))
+            Text(label, fontSize = 11.sp, color = Color.White, maxLines = 1)
+        }
+    }
+}
 
 private fun buildPins(
     friends: List<Friend>, locations: Map<String, LocationUpdate>, me: LocationUpdate?,
-    meeting: MeetingPoint?, help: Map<String, com.bitchat.android.mosh.HelpAlert>, now: Long,
+    meeting: MeetingPoint?, help: Map<String, com.bitchat.android.mosh.HelpAlert>, now: Long, selected: String?,
 ): List<Pin> {
     val pins = mutableListOf<Pin>()
-    meeting?.let { pins += Pin(it.lat, it.lon, ACID, 11f) }
+    fun stroke(isSelected: Boolean) = if (isSelected) "#FFFFFF" else "#000000"
+    meeting?.let { pins += Pin(it.lat, it.lon, ACID, if (selected == MEETING) 14f else 11f, stroke(selected == MEETING)) }
     friends.forEach { f ->
         locations[f.peerID]?.let { l ->
             val stale = now - l.takenAtMs > 600_000
-            pins += Pin(l.lat, l.lon, if (stale) GREY else PINK, 8f)
+            pins += Pin(l.lat, l.lon, if (stale) GREY else PINK, if (f.peerID == selected) 11f else 8f, stroke(f.peerID == selected))
         }
     }
-    help.values.filterNot { HelpRepeater.isLocationUnknown(it) }.forEach { pins += Pin(it.lat, it.lon, RED, 13f) }
+    help.filterValues { !HelpRepeater.isLocationUnknown(it) }.forEach { (peer, h) -> pins += Pin(h.lat, h.lon, RED, 13f, stroke(peer == selected)) }
     me?.let { pins += Pin(it.lat, it.lon, CYAN, 7f) }
     return pins
 }
 
 @Composable
-private fun VenueMap(venue: Venue?, pins: List<Pin>, onLongPress: (LatLng) -> Unit) {
+private fun VenueMap(venue: Venue?, pins: List<Pin>, fitRequest: Int, onLongPress: (LatLng) -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember {
@@ -204,50 +239,73 @@ private fun VenueMap(venue: Venue?, pins: List<Pin>, onLongPress: (LatLng) -> Un
             m.uiSettings.isLogoEnabled = false
             m.addOnMapLongClickListener { onLongPress(it); true }
             m.setStyle(Style.Builder().fromJson(BASE_STYLE)) { style ->
-                addVenueLayers(context, style, venue)
                 style.addSource(GeoJsonSource("pins"))
                 style.addLayer(CircleLayer("pins", "pins").withProperties(
                     PropertyFactory.circleColor(Expression.get("color")),
                     PropertyFactory.circleRadius(Expression.get("radius")),
-                    PropertyFactory.circleStrokeColor("#000000"),
-                    PropertyFactory.circleStrokeWidth(2f),
+                    PropertyFactory.circleStrokeColor(Expression.get("stroke")),
+                    PropertyFactory.circleStrokeWidth(2.5f),
                 ))
-                venue?.let { v ->
-                    m.moveCamera(CameraUpdateFactory.newLatLngBounds(
-                        LatLngBounds.Builder().include(LatLng(v.bbox[1], v.bbox[0])).include(LatLng(v.bbox[3], v.bbox[2])).build(), 0))
-                    m.moveCamera(CameraUpdateFactory.zoomBy(1.5))
-                }
                 styleReady = style
             }
         }
         mapView
     }, modifier = Modifier.fillMaxSize())
 
+    // Venue drawing follows the venue (it changes when your first fix arrives or you walk to another one).
+    LaunchedEffect(styleReady, venue?.id) {
+        val style = styleReady ?: return@LaunchedEffect
+        replaceVenueLayers(context, style, venue)
+    }
+
+    // Frame everyone: when the venue changes, someone appears or disappears, or "Show everyone" is tapped.
+    // Position updates alone do not move the camera, so it never fights the user's panning.
+    LaunchedEffect(styleReady, venue?.id, pins.size, fitRequest) {
+        val m = map ?: return@LaunchedEffect
+        styleReady ?: return@LaunchedEffect
+        val box = fitBox(pins.map { it.lat to it.lon })
+        if (box != null) {
+            val bounds = LatLngBounds.Builder().include(LatLng(box.south, box.west)).include(LatLng(box.north, box.east)).build()
+            val pad = (48 * context.resources.displayMetrics.density).toInt()
+            m.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, pad))
+        } else if (venue != null) {
+            m.moveCamera(CameraUpdateFactory.newLatLngBounds(
+                LatLngBounds.Builder().include(LatLng(venue.bbox[1], venue.bbox[0])).include(LatLng(venue.bbox[3], venue.bbox[2])).build(), 0))
+            m.moveCamera(CameraUpdateFactory.zoomBy(1.5))
+        }
+    }
+
     LaunchedEffect(styleReady, pins) {
         val style = styleReady ?: return@LaunchedEffect
         val fc = FeatureCollection.fromFeatures(pins.map { p ->
             Feature.fromGeometry(Point.fromLngLat(p.lon, p.lat)).apply {
-                addStringProperty("color", p.color); addNumberProperty("radius", p.radius)
+                addStringProperty("color", p.color); addNumberProperty("radius", p.radius); addStringProperty("stroke", p.stroke)
             }
         })
         (style.getSource("pins") as? GeoJsonSource)?.setGeoJson(fc)
     }
 }
 
-private fun addVenueLayers(context: Context, style: Style, venue: Venue?) {
+private val VENUE_LAYERS = listOf("green", "water", "building", "amenity", "path", "road_minor", "road_major")
+
+/** Swap the drawn venue. Venue layers sit below the pins so pins are never hidden. */
+private fun replaceVenueLayers(context: Context, style: Style, venue: Venue?) {
+    VENUE_LAYERS.forEach { style.removeLayer(it) }
+    style.removeSource("venue")
     venue ?: return
     val json = runCatching { context.assets.open(venue.asset).bufferedReader().use { it.readText() } }.getOrNull() ?: return
     style.addSource(GeoJsonSource("venue", json))
     fun kind(k: String) = Expression.eq(Expression.get("kind"), Expression.literal(k))
-    style.addLayer(FillLayer("green", "venue").withFilter(kind("green")).withProperties(PropertyFactory.fillColor("#12301A")))
-    style.addLayer(FillLayer("water", "venue").withFilter(kind("water")).withProperties(PropertyFactory.fillColor("#0B2A3D")))
-    style.addLayer(FillLayer("building", "venue").withFilter(kind("building")).withProperties(PropertyFactory.fillColor("#1F1F1F")))
-    style.addLayer(FillLayer("amenity", "venue").withFilter(kind("amenity")).withProperties(PropertyFactory.fillColor("#3A1214")))
-    style.addLayer(LineLayer("path", "venue").withFilter(kind("path")).withProperties(
+    fun add(layer: org.maplibre.android.style.layers.Layer) = style.addLayerBelow(layer, "pins")
+    add(FillLayer("green", "venue").withFilter(kind("green")).withProperties(PropertyFactory.fillColor("#12301A")))
+    add(FillLayer("water", "venue").withFilter(kind("water")).withProperties(PropertyFactory.fillColor("#0B2A3D")))
+    add(FillLayer("building", "venue").withFilter(kind("building")).withProperties(PropertyFactory.fillColor("#1F1F1F")))
+    add(FillLayer("amenity", "venue").withFilter(kind("amenity")).withProperties(PropertyFactory.fillColor("#3A1214")))
+    add(LineLayer("path", "venue").withFilter(kind("path")).withProperties(
         PropertyFactory.lineColor("#3A3A3A"), PropertyFactory.lineWidth(1f)))
-    style.addLayer(LineLayer("road_minor", "venue").withFilter(kind("road_minor")).withProperties(
+    add(LineLayer("road_minor", "venue").withFilter(kind("road_minor")).withProperties(
         PropertyFactory.lineColor("#4A4A4A"), PropertyFactory.lineWidth(1.5f)))
-    style.addLayer(LineLayer("road_major", "venue").withFilter(kind("road_major")).withProperties(
+    add(LineLayer("road_major", "venue").withFilter(kind("road_major")).withProperties(
         PropertyFactory.lineColor("#7A7A7A"), PropertyFactory.lineWidth(3f)))
 }
 
@@ -304,19 +362,30 @@ private fun MeetingBanner(mp: MeetingPoint, me: LocationUpdate?, onFind: () -> U
     Row(Modifier.fillMaxWidth().background(Color(0xFF2C3A0E)).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("Meeting point: ${mp.label}", fontWeight = FontWeight.Bold)
-            me?.let { Text(metres(distanceM(it.lat, it.lon, mp.lat, mp.lon)) + " away", fontSize = 13.sp) }
+            Text("Meeting point: ${mp.label}", fontWeight = FontWeight.Bold, color = Color.White)
+            me?.let { Text(metres(distanceM(it.lat, it.lon, mp.lat, mp.lon)) + " away", fontSize = 13.sp, color = Color.White) }
         }
-        TextButton(onClick = onFind) { Text("Find") }
-        TextButton(onClick = {
-            MoshRuntime.setMeetingPoint(mp.copy(setAtMs = System.currentTimeMillis(), setBy = "me", cleared = true))
-        }) { Text("Clear") }
+        TextButton(onClick = onFind) { Text("Find", color = Color(0xFFC6FF3D), fontWeight = FontWeight.Bold) }
+        var confirm by remember { mutableStateOf(false) }
+        TextButton(onClick = { confirm = true }) { Text("Clear", color = Color(0xFFC6FF3D)) }
+        if (confirm) AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Clear the meeting point?") },
+            text = { Text("It disappears for all your friends.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    MoshRuntime.setMeetingPoint(mp.copy(setAtMs = System.currentTimeMillis(), setBy = "me", cleared = true))
+                    confirm = false
+                }) { Text("Clear for everyone") }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Keep it") } },
+        )
     }
 }
 
 @Composable
 private fun GuidancePanel(title: String, me: LocationUpdate?, target: LocationUpdate?, now: Long, showAge: Boolean = true, onClose: () -> Unit) {
-    val azimuth = rememberAzimuth()
+    val compass = rememberHeading()
     Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -329,10 +398,23 @@ private fun GuidancePanel(title: String, me: LocationUpdate?, target: LocationUp
                     Text("GPS can't tell the last few metres. Look around, or call out.")
                 }
                 is Guidance.Arrow -> {
-                    val rel = g.bearingDeg - azimuth
-                    Text("↑", fontSize = 72.sp, color = Color(0xFFFF5CDB), modifier = Modifier.rotate(rel.toFloat()))
-                    Text(metres(g.distanceM), fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
-                    Text(directionWords(rel).replaceFirstChar { it.uppercase() }, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    val heading = compass.headingDeg
+                    if (heading != null) {
+                        val rel = g.bearingDeg - heading
+                        Text("↑", fontSize = 72.sp, color = Color(0xFFFF5CDB), modifier = Modifier.rotate(rel.toFloat()))
+                        Text(metres(g.distanceM), fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(directionWords(rel).replaceFirstChar { it.uppercase() }, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        if (compass.needsCalibration) {
+                            Text("Compass unsure: move your phone in a figure of 8.", fontSize = 13.sp, color = Color(0xFFFFC266))
+                        }
+                    } else {
+                        // No compass: the arrow is relative to north, and the words say so.
+                        Text("↑", fontSize = 72.sp, color = Color(0xFFFF5CDB), modifier = Modifier.rotate(g.bearingDeg.toFloat()))
+                        Text(metres(g.distanceM), fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("To the ${compassWords(g.bearingDeg)}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(if (compass.available) "Hold your phone still to point the arrow." else "No compass on this phone: the arrow points as if up is north.",
+                            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
@@ -341,25 +423,60 @@ private fun GuidancePanel(title: String, me: LocationUpdate?, target: LocationUp
     }
 }
 
-/** Compass heading in degrees (0 = north), from the rotation-vector sensor. */
+private data class Compass(val headingDeg: Double?, val available: Boolean, val needsCalibration: Boolean)
+
+/**
+ * Where the phone points (0 = north). Rotation vector first, then the magnetometer-only rotation
+ * vector, then accelerometer plus magnetometer (budget phones often have no gyroscope). Smoothed so
+ * the arrow does not jitter. [Compass.headingDeg] is null with no compass, or while the phone points
+ * straight up or down.
+ */
 @Composable
-private fun rememberAzimuth(): Double {
+private fun rememberHeading(): Compass {
     val context = LocalContext.current
-    var azimuth by remember { mutableDoubleStateOf(0.0) }
+    var compass by remember { mutableStateOf(Compass(null, available = false, needsCalibration = false)) }
     DisposableEffect(Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-        val sensor = sm?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-        val rot = FloatArray(9); val orient = FloatArray(3)
+        val rotation = sm?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+            ?: sm?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
+        val accel = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val magnet = sm?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        val available = rotation != null || (accel != null && magnet != null)
+        compass = Compass(null, available, needsCalibration = false)
+        val r = FloatArray(9); val gravity = FloatArray(3); val field = FloatArray(3)
+        var haveGravity = false; var unreliable = false
+        var sx = 0.0; var sy = 0.0; var smoothed = false
+        fun update() {
+            val h = headingFromRotationMatrix(r)
+            if (h == null) { compass = compass.copy(headingDeg = null); return }
+            val x = Math.cos(Math.toRadians(h)); val y = Math.sin(Math.toRadians(h))
+            if (!smoothed) { sx = x; sy = y; smoothed = true } else { sx += 0.25 * (x - sx); sy += 0.25 * (y - sy) }
+            compass = Compass((Math.toDegrees(Math.atan2(sy, sx)) + 360) % 360, available, unreliable)
+        }
         val listener = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) {
-                SensorManager.getRotationMatrixFromVector(rot, e.values)
-                SensorManager.getOrientation(rot, orient)
-                azimuth = (Math.toDegrees(orient[0].toDouble()) + 360) % 360
+                when (e.sensor.type) {
+                    Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR -> {
+                        SensorManager.getRotationMatrixFromVector(r, e.values); update()
+                    }
+                    Sensor.TYPE_ACCELEROMETER -> { e.values.copyInto(gravity, 0, 0, 3); haveGravity = true }
+                    Sensor.TYPE_MAGNETIC_FIELD -> {
+                        e.values.copyInto(field, 0, 0, 3)
+                        if (rotation == null && haveGravity && SensorManager.getRotationMatrix(r, null, gravity, field)) update()
+                    }
+                }
             }
-            override fun onAccuracyChanged(s: Sensor?, a: Int) {}
+            override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {
+                if (s?.type == Sensor.TYPE_MAGNETIC_FIELD || s?.type == rotation?.type) {
+                    unreliable = accuracy <= SensorManager.SENSOR_STATUS_ACCURACY_LOW
+                }
+            }
         }
-        if (sensor != null) sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI)
+        if (rotation != null) sm?.registerListener(listener, rotation, SensorManager.SENSOR_DELAY_UI)
+        // The magnetometer's accuracy tells us when the compass needs calibrating, whichever source is used.
+        if (magnet != null) sm?.registerListener(listener, magnet, SensorManager.SENSOR_DELAY_UI)
+        if (rotation == null && accel != null) sm?.registerListener(listener, accel, SensorManager.SENSOR_DELAY_UI)
         onDispose { sm?.unregisterListener(listener) }
     }
-    return azimuth
+    return compass
 }

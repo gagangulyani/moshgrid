@@ -42,15 +42,37 @@ object HelpNotifier {
         return id
     }
 
-    fun onReceived(context: Context, fromPeerID: String, p: MoshPayload) {
-        when (p) {
-            is HelpAlert -> show(context, fromPeerID, p)
-            is HelpCancel -> NotificationManagerCompat.from(context).cancel(notificationId(fromPeerID))
-            else -> Unit
+    /** When each friend's current alert first rang and last rang, to re-ring a few times then go quiet. */
+    private val rings = HashMap<String, Pair<String, LongArray>>()
+
+    /**
+     * Acts on what [FriendStateStore.apply] decided, never on the raw payload: a cancelled, late or
+     * replayed alert does not ring, and a cancel for an older alert does not hide a newer one.
+     */
+    @Synchronized
+    fun onChange(context: Context, fromPeerID: String, change: HelpChange, active: HelpAlert?) {
+        val now = System.currentTimeMillis()
+        when (change) {
+            HelpChange.NONE -> Unit
+            HelpChange.CANCELLED -> { rings.remove(fromPeerID); NotificationManagerCompat.from(context).cancel(notificationId(fromPeerID)) }
+            HelpChange.NEW -> {
+                val alert = active ?: return
+                rings[fromPeerID] = alert.alertId to longArrayOf(now, now)
+                show(context, fromPeerID, alert, ring = true)
+            }
+            HelpChange.UPDATED -> {
+                val alert = active ?: return
+                val r = rings[fromPeerID]?.takeIf { it.first == alert.alertId }
+                    ?: (alert.alertId to longArrayOf(now, 0L)).also { rings[fromPeerID] = it }
+                // Ring again with each repeat for the first minutes: one ring in a loud crowd is easy to miss.
+                val ring = now - r.second[0] <= RE_RING_FOR_MS && now - r.second[1] >= RE_RING_EVERY_MS
+                if (ring) r.second[1] = now
+                show(context, fromPeerID, alert, ring)
+            }
         }
     }
 
-    private fun show(context: Context, fromPeerID: String, alert: HelpAlert) {
+    private fun show(context: Context, fromPeerID: String, alert: HelpAlert, ring: Boolean) {
         val channel = ensureChannel(context)
         val name = MoshRuntime.friends.displayName(fromPeerID) ?: "A friend"
         val where = if (HelpRepeater.isLocationUnknown(alert)) "Location unknown." else "Tap to see where."
@@ -68,7 +90,17 @@ object HelpNotifier {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setContentIntent(open)
             .setAutoCancel(false)
-            .setOnlyAlertOnce(true)
+            .setOnlyAlertOnce(!ring)
+            // Lock screen: who, not the note (a stranger glancing at the phone sees no details).
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(
+                NotificationCompat.Builder(context, channel)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentTitle("$name needs help")
+                    .setContentText("Open MoshGrid to see where.")
+                    .setCategory(NotificationCompat.CATEGORY_ALARM)
+                    .build()
+            )
             .build()
         val nm = NotificationManagerCompat.from(context)
         if (!nm.areNotificationsEnabled()) {
@@ -83,5 +115,16 @@ object HelpNotifier {
         }
     }
 
-    private fun notificationId(peerID: String) = 0x4E1F0000 or (peerID.hashCode() and 0xFFFF)
+    /** Remove Help notifications for these friends (panic wipe, removed friend). */
+    @Synchronized
+    fun cancel(context: Context, peerIDs: Collection<String>) {
+        peerIDs.forEach { rings.remove(it) }
+        val nm = NotificationManagerCompat.from(context)
+        peerIDs.forEach { nm.cancel(notificationId(it)) }
+    }
+
+    private fun notificationId(peerID: String) = ("help:" + peerID).hashCode()
+
+    const val RE_RING_EVERY_MS = 110_000L
+    const val RE_RING_FOR_MS = 10 * 60_000L
 }

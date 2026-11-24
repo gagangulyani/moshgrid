@@ -416,7 +416,7 @@ class NostrRelayManager private constructor() {
     init {
         // Initialize with default relays - avoid static initialization order issues
         try {
-            val defaultRelayUrls = listOf(
+            val defaultRelayUrls = NostrTestRelays.override?.takeIf { com.bitchat.android.BuildConfig.DEBUG } ?: listOf(
                 "wss://relay.damus.io",
                 "wss://relay.primal.net",
                 "wss://offchain.pub",
@@ -1229,4 +1229,13 @@ class NostrRelayManager private constructor() {
             handleDisconnection(relayUrl, webSocket, t, liveLocationToken)
         }
     }
+}
+
+/**
+ * Debug builds only: relays to use instead of the defaults, set by the debug test-relay provider
+ * before the relay manager is created, so emulator tests use a local relay, never public ones.
+ * Kept outside [NostrRelayManager] because touching its companion creates the manager.
+ */
+object NostrTestRelays {
+    @Volatile var override: List<String>? = null
 }

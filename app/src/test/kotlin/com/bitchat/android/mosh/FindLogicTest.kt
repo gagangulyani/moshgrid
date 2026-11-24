@@ -56,4 +56,60 @@ class FindLogicTest {
         assertEquals("test-b", VenueRegistry.nearest(1.01, 1.01, v)?.id)
         assertNull(VenueRegistry.nearest(5.0, 5.0, v))
     }
+
+    @Test
+    fun venue_around_uses_first_point_inside_a_venue() {
+        val v = VenueRegistry.load(json)
+        // I am outside every venue, my friend is inside B: draw B.
+        assertEquals("test-b", VenueRegistry.around(listOf(5.0 to 5.0, 1.01 to 1.01), v)?.id)
+        assertEquals("test-a", VenueRegistry.around(listOf(0.01 to 0.01, 1.01 to 1.01), v)?.id)
+        assertNull(VenueRegistry.around(listOf(5.0 to 5.0), v))
+    }
+
+    // Rotation matrix, row-major, columns = the phone's X (right edge), Y (top edge), Z (out of the
+    // screen) in world coordinates (east, north, up).
+    private fun rot(x: List<Double>, y: List<Double>, z: List<Double>) = floatArrayOf(
+        x[0].toFloat(), y[0].toFloat(), z[0].toFloat(),
+        x[1].toFloat(), y[1].toFloat(), z[1].toFloat(),
+        x[2].toFloat(), y[2].toFloat(), z[2].toFloat(),
+    )
+
+    @Test fun heading_flat_top_edge_north_is_0() =
+        assertEquals(0.0, headingFromRotationMatrix(rot(listOf(1.0, 0.0, 0.0), listOf(0.0, 1.0, 0.0), listOf(0.0, 0.0, 1.0)))!!, 0.5)
+
+    @Test fun heading_flat_top_edge_east_is_90() =
+        assertEquals(90.0, headingFromRotationMatrix(rot(listOf(0.0, -1.0, 0.0), listOf(1.0, 0.0, 0.0), listOf(0.0, 0.0, 1.0)))!!, 0.5)
+
+    @Test fun heading_upright_facing_north_is_0() =
+        // Held in front of you: top edge up, screen towards you (south), camera north.
+        assertEquals(0.0, headingFromRotationMatrix(rot(listOf(1.0, 0.0, 0.0), listOf(0.0, 0.0, 1.0), listOf(0.0, -1.0, 0.0)))!!, 0.5)
+
+    @Test fun heading_upright_facing_west_is_270() =
+        assertEquals(270.0, headingFromRotationMatrix(rot(listOf(0.0, 1.0, 0.0), listOf(0.0, 0.0, 1.0), listOf(1.0, 0.0, 0.0)))!!, 0.5)
+
+    @Test fun heading_tilted_45_facing_south_is_180() {
+        val c = Math.sqrt(0.5)
+        assertEquals(180.0, headingFromRotationMatrix(rot(listOf(-1.0, 0.0, 0.0), listOf(0.0, -c, c), listOf(0.0, c, c)))!!, 0.5)
+    }
+
+    @Test fun compass_words_cover_eight_points() {
+        assertEquals("north", compassWords(0.0)); assertEquals("north", compassWords(350.0))
+        assertEquals("north-east", compassWords(40.0)); assertEquals("east", compassWords(90.0))
+        assertEquals("south-west", compassWords(225.0)); assertEquals("north-west", compassWords(320.0))
+    }
+
+    @Test fun fit_box_single_point_shows_surroundings() {
+        val b = fitBox(listOf(0.25 to 0.5))!!
+        assertTrue(distanceM(b.south, 0.5, b.north, 0.5) >= 249.0)
+        assertTrue(distanceM(0.25, b.west, 0.25, b.east) >= 249.0)
+        assertTrue(0.25 in b.south..b.north && 0.5 in b.west..b.east)
+    }
+
+    @Test fun fit_box_contains_far_apart_points() {
+        val b = fitBox(listOf(0.25 to 0.5, 0.27 to 0.48))!!
+        assertEquals(0.25, b.south, 1e-9); assertEquals(0.27, b.north, 1e-9)
+        assertEquals(0.48, b.west, 1e-9); assertEquals(0.5, b.east, 1e-9)
+        assertNull(fitBox(emptyList()))
+    }
 }
+

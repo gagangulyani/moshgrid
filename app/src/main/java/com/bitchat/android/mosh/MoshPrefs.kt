@@ -35,6 +35,9 @@ class MoshPrefs(private val prefs: SharedPreferences) {
         prefs.edit().putStringSet(KEY_PAUSED, next).apply()
     }
 
+    /** Panic wipe: back to first-run defaults (onboarding shows again). */
+    fun clear() { prefs.edit().clear().commit() }
+
     companion object {
         private const val FILE = "moshgrid_prefs"
         private const val KEY_BLUETOOTH = "bluetooth"

@@ -757,7 +757,7 @@ fun PeopleSection(
         // Build a map of base name counts across all people shown in the list (connected + offline + nostr)
         // Helper to compute display name used for a given key
         fun computeDisplayNameForPeerId(key: String): String {
-            return if (key == nickname) "You" else (peerNicknames[key] ?: (privateChats[key]?.lastOrNull()?.sender ?: key.take(12)))
+            return if (key == nickname) "You" else (com.bitchat.android.mosh.MoshRuntime.friendNameFor(key) ?: peerNicknames[key] ?: (privateChats[key]?.lastOrNull()?.sender ?: key.take(12)))
         }
 
         val baseNameCounts = mutableMapOf<String, Int>()
@@ -777,7 +777,7 @@ fun PeopleSection(
                 favPeerID.lowercase() !in excludedIdentityAliases &&
                 !isFavoriteMappedToConnected(fav)
             ) {
-                val dn = peerNicknames[favPeerID] ?: fav.peerNickname
+                val dn = com.bitchat.android.mosh.MoshRuntime.friendNameFor(favPeerID) ?: peerNicknames[favPeerID] ?: fav.peerNickname
                 val (b, _) = splitSuffix(dn)
                 if (b != "You") baseNameCounts[b] = (baseNameCounts[b] ?: 0) + 1
             }
@@ -820,7 +820,7 @@ fun PeopleSection(
                 if (noiseHex != null) privateChats[noiseHex]?.count { msg -> msg.sender != nickname && nostrUnread } ?: 0 else 0
             )
 
-            val displayName = if (peerID == nickname) "You" else (peerNicknames[peerID] ?: (privateChats[peerID]?.lastOrNull()?.sender ?: peerID.take(12)))
+            val displayName = if (peerID == nickname) "You" else (com.bitchat.android.mosh.MoshRuntime.friendNameFor(peerID) ?: peerNicknames[peerID] ?: (privateChats[peerID]?.lastOrNull()?.sender ?: peerID.take(12)))
             val (bName, _) = splitSuffix(displayName)
             val showHash = (baseNameCounts[bName] ?: 0) > 1
 
@@ -860,7 +860,7 @@ fun PeopleSection(
                 (nostrConvKey != null && hasUnreadPrivateMessages.contains(nostrConvKey))
 
             val mappedConnectedPeerID = noiseHexByPeerID.entries.firstOrNull { it.value.equals(favPeerID, ignoreCase = true) }?.key
-            val dn = peerNicknames[favPeerID] ?: fav.peerNickname
+            val dn = com.bitchat.android.mosh.MoshRuntime.friendNameFor(favPeerID) ?: peerNicknames[favPeerID] ?: fav.peerNickname
             val (bName, _) = splitSuffix(dn)
             val showHash = (baseNameCounts[bName] ?: 0) > 1
 
@@ -1716,11 +1716,16 @@ fun PrivateChatSheet(
 
     // Compute display name and title text reactively
     val displayName = remember(peerID, peerNicknames, favoriteRelationship) {
-        peerNicknames[peerID]
-            ?: activeMeshPeerID?.let { peerNicknames[it] }
-            ?: contactResolution.displayName
+        // MoshGrid: the name from the QR scan wins (a nickname in a packet can be anyone's); then the rest.
+        com.bitchat.android.mosh.MoshRuntime.friendNameFor(peerID)
+            ?: peerNicknames[peerID]?.takeIf { it.isNotBlank() }
+            ?: activeMeshPeerID?.let { peerNicknames[it] }?.takeIf { it.isNotBlank() }
+            ?: contactResolution.displayName?.takeIf { it.isNotBlank() }
             ?: favoriteRelationship?.peerNickname?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+            ?: com.bitchat.android.mosh.MoshRuntime.friendNameFor(peerID)
             ?: viewModel.resolvePeerDisplayNameForFingerprint(peerID)
+                .takeIf { it.isNotBlank() && !com.bitchat.android.services.ContactIdentityResolver.isContactConversationId(it) }
+            ?: "Friend"
     }
     val titleText = remember(peerID, peerNicknames, favoriteRelationship) {
         if (isNostrPeer) {
@@ -1910,7 +1915,9 @@ fun PrivateChatSheet(
                         },
                         title = titleText
                     ) {
-                        ConversationHeaderAction(
+                        // MoshGrid: friends are made by scanning QR codes; a star tap here would
+                        // silently unfriend someone, so it is hidden.
+                        if (com.bitchat.android.mosh.MoshFeatures.FAVORITE_STAR) ConversationHeaderAction(
                             onClick = { viewModel.toggleFavorite(peerID) },
                             contentDescription = if (isFavorite) {
                                 stringResource(R.string.cd_remove_favorite)

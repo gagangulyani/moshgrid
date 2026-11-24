@@ -620,7 +620,7 @@
   <string name="perm_location_system">MoshGrid needs this to scan for nearby devices</string>
   <string name="perm_background_location_desc">Recommended to scan for nearby devices while the app is in the background</string>
   <string name="perm_background_location_system">Allow background location access</string>
-  <string name="perm_notifications_desc">Receive notifications when you receive private messages</string>
+  <string name="perm_notifications_desc">So a friend\'s Help alert can ring your phone, and you see their messages</string>
   <string name="perm_notifications_system">Allow MoshGrid to send you notifications</string>
   <string name="perm_battery_desc">Disable battery optimization to ensure MoshGrid runs reliably in the background and maintains mesh network connections</string>
   <string name="perm_battery_system">Allow MoshGrid to run without battery restrictions</string>

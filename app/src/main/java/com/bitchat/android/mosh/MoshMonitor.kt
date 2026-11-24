@@ -11,6 +11,14 @@ object MoshMonitor {
     fun fieldLog(context: Context): FieldLog =
         log ?: synchronized(this) { log ?: FieldLog(File(context.applicationContext.filesDir, "diagnostics")).also { log = it } }
 
+    /** Panic wipe: delete the diagnostics folder (field log and heartbeat). */
+    fun wipe(context: Context) {
+        synchronized(this) {
+            File(context.applicationContext.filesDir, "diagnostics").deleteRecursively()
+            log = null
+        }
+    }
+
     fun event(context: Context, name: String, count: Int = 1) {
         fieldLog(context).event(name, count)
         com.bitchat.android.mosh.monitor.Monitoring.breadcrumb(name, count)

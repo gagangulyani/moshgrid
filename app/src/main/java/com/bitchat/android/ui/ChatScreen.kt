@@ -378,7 +378,9 @@ fun ChatScreen(viewModel: ChatViewModel) {
         }
     }
 
-    ChatInputSection(
+    // MoshGrid: public chat is off, so a composer here would show a message nobody receives.
+    // Private chats have their own composer in the chat sheet.
+    if (com.bitchat.android.mosh.MoshFeatures.PUBLIC_CHAT || selectedPrivatePeer != null) ChatInputSection(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .onSizeChanged { size ->

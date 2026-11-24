@@ -31,14 +31,16 @@ class MoshRoutingTest {
         assertEquals(loc, got)
     }
 
-    private class Harness(var now: Long = 0L, var meshUp: Boolean = false, var internet: Boolean = true, var meshSeenAt: Long? = null) {
+    private class Harness(var now: Long = 0L, var meshUp: Boolean = false, var internet: Boolean = true, var meshSeenAt: Long? = null,
+                          var keyKnown: Boolean = true, var online: Boolean = true) {
         val nostrSent = mutableListOf<Pair<NoisePayload, String>>()
         val sender = MoshSender(
             clock = { now },
             sendMesh = { _, _ -> meshUp },
-            sendNostr = { p, to -> nostrSent += p to to },
+            sendNostr = { p, to -> if (keyKnown) { nostrSent += p to to; true } else false },
             internetAllowed = { internet },
             lastMeshSeenMs = { meshSeenAt },
+            internetOnline = { online },
         )
     }
 
@@ -80,5 +82,48 @@ class MoshRoutingTest {
         val h = Harness()
         assertEquals(MoshRoute.NOSTR, h.sender.send(help, "f"))
         assertEquals(MoshRoute.NOSTR, h.sender.send(help, "f"))
+    }
+
+    @Test
+    fun unknown_internet_key_is_never_reported_as_sent() {
+        val h = Harness(keyKnown = false)
+        assertEquals(MoshRoute.NONE, h.sender.send(help, "f"))
+        h.meshUp = true
+        assertEquals(MoshRoute.MESH, h.sender.send(help, "f"))
+    }
+
+    @Test
+    fun unknown_key_does_not_use_up_the_location_throttle() {
+        val h = Harness(keyKnown = false)
+        assertEquals(MoshRoute.NONE, h.sender.send(loc, "f"))
+        h.keyKnown = true; h.now = 1_000
+        assertEquals(MoshRoute.NOSTR, h.sender.send(loc, "f"))
+    }
+
+    @Test
+    fun no_signal_queues_help_once_and_says_so() {
+        val h = Harness(online = false)
+        assertEquals(MoshRoute.QUEUED, h.sender.send(help, "f"))
+        assertEquals(MoshRoute.QUEUED, h.sender.send(help, "f"))
+        assertEquals(1, h.nostrSent.size)
+        // A cancel for it is queued too, so the friend learns it is over once signal returns.
+        assertEquals(MoshRoute.QUEUED, h.sender.send(HelpCancel("h", 2L), "f"))
+        assertEquals(2, h.nostrSent.size)
+    }
+
+    @Test
+    fun no_signal_does_not_queue_locations() {
+        val h = Harness(online = false)
+        assertEquals(MoshRoute.NONE, h.sender.send(loc, "f"))
+        assertTrue(h.nostrSent.isEmpty())
+    }
+
+    @Test
+    fun mesh_only_never_touches_the_internet() {
+        val h = Harness()
+        assertEquals(MoshRoute.NONE, h.sender.send(help, "f", meshOnly = true))
+        h.meshUp = true
+        assertEquals(MoshRoute.MESH, h.sender.send(help, "f", meshOnly = true))
+        assertTrue(h.nostrSent.isEmpty())
     }
 }

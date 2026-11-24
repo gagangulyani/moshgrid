@@ -56,6 +56,7 @@ class MoshFieldSimTest {
                 val step = minOf(60_000L, end - now)
                 phones.values.filter { it.alive }.forEach { it.tick() }
                 runUntil(now + step)
+                flushSenderQueues()
                 flushRelays()
             }
         }
@@ -92,10 +93,25 @@ class MoshFieldSimTest {
             return true
         }
 
-        fun sendNostr(from: String, to: String, p: NoisePayload) {
-            if (!phones.getValue(from).internet) { log += "nostr unsent $from->$to"; return }
+        /** Friends whose internet key the sender does not know yet: nothing can be sent to them. */
+        val unknownNostrKey = HashSet<Pair<String, String>>()
+
+        /** Like the app: false when the key is unknown; otherwise queued until the sender is online. */
+        fun sendNostr(from: String, to: String, p: NoisePayload): Boolean {
+            if ((from to to) in unknownNostrKey) return false
+            val src = phones.getValue(from)
+            if (!src.internet) { src.nostrQueue += to to p; log += "nostr queued $from->$to"; return true }
             relayInbox.getOrPut(to) { mutableListOf() } += Triple(from, p, now + nostrDelayMs)
             at(now + nostrDelayMs) { flushRelays() }
+            return true
+        }
+
+        /** A sender coming back online flushes what it queued while offline. */
+        fun flushSenderQueues() {
+            phones.values.filter { it.alive && it.internet && it.nostrQueue.isNotEmpty() }.forEach { src ->
+                val q = src.nostrQueue.toList(); src.nostrQueue.clear()
+                q.forEach { (to, p) -> sendNostr(src.id, to, p) }
+            }
         }
 
         fun flushRelays() {
@@ -128,6 +144,8 @@ class MoshFieldSimTest {
         var bluetooth = true
         var internet = true
         var fix: LocationUpdate? = null
+        /** Internet sends waiting for a connection; in memory only, like the app's relay queue. */
+        val nostrQueue = mutableListOf<Pair<String, NoisePayload>>()
         val paused = HashSet<String>()
         val outbox = MemOutbox()
         val received = MemReceived()
@@ -158,15 +176,20 @@ class MoshFieldSimTest {
             help = HelpRepeater(clock, { fix }, { p -> sendToFriends(p) }, outbox)
         }
 
-        fun kill() { alive = false }
+        fun kill() { alive = false; nostrQueue.clear() }
 
         fun sendToFriends(p: MoshPayload): Map<String, MoshRoute> {
             val skip = if (p is LocationUpdate) paused else emptySet()
             return friendIds.filter { it !in skip }.associateWith { sender.send(p, it) }
         }
 
+        /** Times the notifier would ring (a NEW Help), per alert ID. */
+        val rings = HashMap<String, Int>()
+
         fun receive(from: String, p: NoisePayload) {
-            MoshInbox.receive(from, p, registry) { f, decoded -> store.apply(f, decoded) }
+            MoshInbox.receive(from, p, registry) { f, decoded ->
+                if (store.apply(f, decoded) == HelpChange.NEW && decoded is HelpAlert) rings.merge(decoded.alertId, 1, Int::plus)
+            }
         }
 
         fun tick() = help.tick()
@@ -261,9 +284,10 @@ class MoshFieldSimTest {
 
     @Test fun d2_same_help_over_both_paths_is_one_alert() {
         val n = world("ana", "ben"); n.link("ana", "ben")
-        n.p("ana").help.raise("")
-        n.advance(10_000)
-        assertEquals(1, n.p("ben").store.activeHelp.value.size)
+        n.p("ana").internet = true; n.p("ben").internet = true
+        val id = n.p("ana").help.raise("")
+        n.advance(10 * 60_000) // Bluetooth and internet copies plus several repeats
+        assertEquals("rings", mapOf(id to 1), n.p("ben").rings)
     }
 
     @Test fun d3_cancel_before_alert_keeps_alert_away() {
@@ -429,5 +453,49 @@ class MoshFieldSimTest {
         n.p("ben2").help.raise("")
         n.runUntil(2_000)
         assertNull(n.p("ana").store.activeHelp.value["ben2"])
+    }
+
+    // MARK: - crowds
+
+    @Test fun i3_fifty_strangers_flooding_never_appear_and_a_friend_still_gets_through() {
+        val n = world("ana", "ben"); n.link("ana", "ben")
+        val strangers = (1..50).map { "s$it" }
+        strangers.forEach { s -> n.phones[s] = Phone(s, n, setOf("ben")); n.link(s, "ben") }
+        // Every stranger floods ben with locations, Help and meeting points for 10 minutes.
+        repeat(10) { minute ->
+            strangers.forEach { s ->
+                n.p(s).shareLocation(0.001, 0.001)
+                n.p(s).sendToFriends(MeetingPoint("m-$s-$minute", 0.002, 0.002, "", n.now, s, false))
+            }
+            if (minute == 0) strangers.forEach { n.p(it).help.raise("") }
+            if (minute == 5) n.p("ana").help.raise("")
+            n.advance(60_000)
+        }
+        val store = n.p("ben").store
+        assertEquals(setOf("ana"), store.activeHelp.value.keys)
+        assertTrue(store.locations.value.keys.none { it in strangers })
+        assertTrue(store.meetingPoint.value?.pointId?.startsWith("m-s") != true)
+    }
+
+    @Test fun i4_twenty_friends_out_of_range_location_over_internet_stays_throttled() {
+        val ids = listOf("ana") + (1..20).map { "f$it" }
+        val n = world(*ids.toTypedArray()) // nobody linked: everyone far away, internet on
+        n.runUntil(MoshSender.MESH_GRACE_MS + 1)
+        var nostrSends = 0
+        val start = n.now
+        // Location every 2 minutes for an hour, as the app does while sharing.
+        repeat(30) {
+            nostrSends += n.p("ana").sendToFriends(LocationUpdate(0.001, 0.001, 8f, n.now, 80))
+                .values.count { it == MoshRoute.NOSTR }
+            n.advance(120_000)
+        }
+        assertEquals(60 * 60_000L, n.now - start)
+        // At most one per friend per 5 minutes: 20 friends x 12 windows.
+        assertTrue("sent $nostrSends", nostrSends <= 20 * 12)
+        ids.drop(1).forEach { assertNotNull("no location at $it", n.p(it).store.locations.value["ana"]) }
+        // Help is never throttled: every friend gets it at once.
+        n.p("ana").help.raise("")
+        n.runUntil(n.now + n.nostrDelayMs + 1)
+        ids.drop(1).forEach { assertNotNull("no Help at $it", n.p(it).store.activeHelp.value["ana"]) }
     }
 }

@@ -336,7 +336,10 @@ class ChatViewModel(
                 .firstOrNull()
 
             summary.copy(
-                displayName = resolveConversationDisplayName(
+                // MoshGrid: the name from the QR exchange wins; names in packets are blank or untrusted.
+                displayName = com.bitchat.android.mosh.MoshRuntime.friendNameFor(summary.conversationID)
+                    ?: aliases.firstNotNullOfOrNull { com.bitchat.android.mosh.MoshRuntime.friendNameFor(it) }
+                    ?: resolveConversationDisplayName(
                     fallbackName = summary.displayName,
                     connectedPeerID = connectedPeerID,
                     peerNicknames = liveIdentity.peerNicknames,
@@ -1438,6 +1441,10 @@ class ChatViewModel(
 
     private suspend fun performPanicClearAllData() {
         Log.w(TAG, "🚨 PANIC MODE ACTIVATED - Clearing all sensitive data")
+        // MoshGrid state first, while friends can still receive the final Help cancel.
+        val moshWiped = try {
+            com.bitchat.android.mosh.MoshRuntime.wipe(getApplication()); true
+        } catch (_: Exception) { false }
         try {
             com.bitchat.android.geohash.LocationChannelManager
                 .getInstance(getApplication())
@@ -1465,7 +1472,7 @@ class ChatViewModel(
         
         // Every stage that wipes data at rest reports here. The success message is a
         // security assurance, so it requires all of them, not just the conversation database.
-        var wipeComplete = true
+        var wipeComplete = moshWiped
 
         // Clear seen message store and MessageRouter outbox
         try {

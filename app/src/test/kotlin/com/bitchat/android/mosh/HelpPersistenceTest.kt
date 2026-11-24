@@ -37,4 +37,15 @@ class HelpPersistenceTest {
         prefs.edit().putString("help_in_active", "peer not-base64!!").commit()
         assertNull(PrefsReceivedHelp(prefs).load())
     }
+
+    @Test fun friend_snapshot_round_trips() {
+        val p = PrefsFriendSnapshot(prefs)
+        val s = FriendSnapshot(
+            locations = mapOf("aa11" to LocationUpdate(0.001, -0.002, 9f, 1_000L, 40)),
+            meeting = MeetingPoint("m-1", 0.003, 0.004, "big tree ✨", 2_000L, "aa11", false),
+            lastHeard = mapOf("aa11" to 3_000L),
+        )
+        p.save(s)
+        assertEquals(s, PrefsFriendSnapshot(prefs).load())
+    }
 }

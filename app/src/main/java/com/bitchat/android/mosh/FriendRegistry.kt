@@ -39,7 +39,8 @@ class DefaultFriendRegistry(
             Friend(
                 peerID = peerID,
                 noiseKeyHex = rel.peerNoisePublicKey.joinToString("") { "%02x".format(it) },
-                displayName = rel.peerNickname,
+                // A nickname can be blank (verified before their name arrived); never show an empty name.
+                displayName = rel.peerNickname.trim().ifEmpty { "Friend ${peerID.take(4)}" },
                 status = if (rel.theyFavoritedUs) FriendStatus.FRIEND else FriendStatus.WAITING_FOR_THEM,
             )
         }

@@ -46,3 +46,7 @@
 -keepclassmembers class * implements android.location.LocationListener {
     public <methods>;
 }
+
+# MoshGrid: venues.json is read by Gson into these classes; keep them and their fields.
+-keep class com.bitchat.android.mosh.Venue { <fields>; <init>(...); }
+-keep class com.bitchat.android.mosh.VenueRegistry$VenueFile { <fields>; <init>(...); }

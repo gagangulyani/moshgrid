@@ -44,7 +44,15 @@ class MeshForegroundService : Service() {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (shouldStartForeground) {
-                    context.startForegroundService(intent)
+                    try {
+                        context.startForegroundService(intent)
+                    } catch (e: IllegalStateException) {
+                        // Android refuses a foreground start from the background (for example a
+                        // BOOT_COMPLETED replayed when a stopped app is next started). That must
+                        // not crash the app; the next activity start or tick retries.
+                        android.util.Log.w("MeshForegroundService", "Foreground start refused: ${e.javaClass.simpleName}")
+                        com.bitchat.android.mosh.MoshMonitor.event(context, "service_start_blocked")
+                    }
                 } else {
                     android.util.Log.i(
                         "MeshForegroundService",

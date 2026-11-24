@@ -306,7 +306,9 @@ class ChatState(
     }
 
     fun setPeerNicknames(nicknames: Map<String, String>) {
-        _peerNicknames.value = nicknames
+        // MoshGrid announces no name in clear, so most nicknames arrive blank. Leaving them out lets
+        // every screen fall back to the friend's QR name or a short ID instead of showing nothing.
+        _peerNicknames.value = nicknames.filterValues { it.isNotBlank() }
     }
 
     fun setPeerRSSI(rssi: Map<String, Int>) {

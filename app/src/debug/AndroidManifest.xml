@@ -2,7 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <application>
+    <application android:networkSecurityConfig="@xml/network_security_config_debug">
+        <!-- Debug-only: points Nostr at a local test relay when one was set (see TestRelayProvider). -->
+        <provider
+            android:name="com.bitchat.android.testhook.TestRelayProvider"
+            android:authorities="${applicationId}.testrelay"
+            android:exported="false"
+            android:initOrder="1000" />
         <!-- Debug-only ADB test hook. Drives mesh operations (scan, connect,
              handshake, DMs, files, broadcast, raw packets) from host scripts.
              Exported intentionally so `adb shell am broadcast` can reach it;

@@ -49,9 +49,14 @@ class LocationSharer(private val context: Context) : LocationListener {
             lat = location.latitude,
             lon = location.longitude,
             accuracyM = if (location.hasAccuracy()) location.accuracy else 50f,
-            takenAtMs = now,
+            // When the fix was taken, not when it reached us: a cached fix must not look fresh.
+            takenAtMs = location.time.takeIf { it in 1..now } ?: now,
             batteryPct = batteryPct(),
         )
+        // A coarse network fix must not replace a better GPS fix from the last 30 seconds.
+        MoshRuntime.myLocation.value?.let { cur ->
+            if (update.accuracyM > cur.accuracyM && update.takenAtMs - cur.takenAtMs < 30_000L) return
+        }
         MoshRuntime.updateMyLocation(update)
         if (!MoshRuntime.isInitialised || !MoshRuntime.prefs.shareLocation) return
         if (shouldSend(lastSent, update, now)) {

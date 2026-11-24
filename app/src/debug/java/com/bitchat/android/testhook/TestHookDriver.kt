@@ -79,10 +79,13 @@ object TestHookDriver {
             )
             "favorite_status" -> favoriteStatus(context, intent.requiredString("peer"))
             // MoshGrid (debug only): make a peer a friend, send friend-only payloads, read state.
-            "mosh_befriend" -> moshBefriend(context, intent.requiredString("peer"), intent.getStringExtra("name") ?: "Test friend")
+            "mosh_befriend" -> moshBefriend(context, intent.requiredString("peer"), intent.getStringExtra("name") ?: "Test friend", intent.getBooleanExtra("exchange_key", false) || intent.getStringExtra("exchange_key") == "true")
             "mosh_send" -> moshSend(context, intent.requiredString("peer"), intent.requiredString("kind"), intent.getStringExtra("token") ?: "t")
             "mosh_state" -> moshState(context, intent.requiredString("peer"))
             "mosh_help" -> moshHelp(context, intent.requiredString("action"))
+            "test_relay" -> testRelay(context, intent.getStringExtra("url").orEmpty())
+            "tor" -> tor(context, intent.requiredString("mode"))
+            "net" -> net(context)
             "verification_set" -> verificationSet(
                 context,
                 intent.requiredString("peer"),
@@ -318,7 +321,7 @@ object TestHookDriver {
 
     // MARK: - MoshGrid (debug only). Synthetic coordinates only.
 
-    private fun moshBefriend(context: Context, peerID: String, name: String): JSONObject {
+    private fun moshBefriend(context: Context, peerID: String, name: String, exchangeKey: Boolean = false): JSONObject {
         val mesh = mesh(context)
         val key = mesh.getPeerInfo(peerID)?.noisePublicKey ?: return err("mosh_befriend", "peer Noise key is unavailable")
         FavoritesPersistenceService.initialize(context)
@@ -327,6 +330,8 @@ object TestHookDriver {
         val identity = com.bitchat.android.identity.SecureIdentityStateManager(context)
         identity.setVerifiedFingerprint(identity.generateFingerprint(key), true)
         com.bitchat.android.mosh.MoshRuntime.init(context)
+        // Like the QR flow: tell the friend we favourited them, which carries our Nostr key.
+        if (exchangeKey) com.bitchat.android.services.MessageRouter.tryGetInstance()?.sendFavoriteNotification(peerID, true)
         return ok("mosh_befriend").put("peer", peerID)
             .put("is_friend", com.bitchat.android.mosh.MoshRuntime.friends.isFriend(peerID))
     }
@@ -354,6 +359,30 @@ object TestHookDriver {
             .put("meeting_label", store.meetingPoint.value?.label ?: JSONObject.NULL)
             .put("help_active", store.activeHelp.value[peerID]?.alertId ?: JSONObject.NULL)
             .put("help_raised_at", store.activeHelp.value[peerID]?.raisedAtMs ?: JSONObject.NULL)
+    }
+
+    /** Point Nostr at a local test relay (applies on next app start). Blank clears it. */
+    private fun testRelay(context: Context, url: String): JSONObject {
+        context.getSharedPreferences(TestRelayProvider.PREFS, Context.MODE_PRIVATE).edit()
+            .putString(TestRelayProvider.KEY_URL, url).commit()
+        return ok("test_relay").put("url", url)
+    }
+
+    private fun tor(context: Context, mode: String): JSONObject {
+        val m = com.bitchat.android.net.TorMode.valueOf(mode.uppercase())
+        com.bitchat.android.net.TorPreferenceManager.set(context, m)
+        // Write through now: tests restart the app straight after.
+        context.getSharedPreferences("bitchat_settings", Context.MODE_PRIVATE).edit().putString("tor_mode", m.name).commit()
+        return ok("tor").put("mode", m.name)
+    }
+
+    /** Internet path state: relay connections and what the sender believes. */
+    private fun net(context: Context): JSONObject {
+        val nostr = com.bitchat.android.nostr.NostrRelayManager.getInstance(context)
+        val relays = JSONArray()
+        nostr.relays.value.forEach { relays.put(JSONObject().put("url", it.url).put("connected", it.isConnected)) }
+        return ok("net").put("online", nostr.isConnected.value).put("relays", relays)
+            .put("tor", com.bitchat.android.net.TorPreferenceManager.get(context).name)
     }
 
     /** Raise or cancel Help through the real repeater (the path the Help button uses). */
