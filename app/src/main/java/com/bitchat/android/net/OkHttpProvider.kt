@@ -1,13 +1,11 @@
 package com.bitchat.android.net
 
 import okhttp3.OkHttpClient
-import java.net.InetSocketAddress
-import java.net.Proxy
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Centralized OkHttp provider to ensure all network traffic honors Tor settings.
+ * Centralized OkHttp provider. MoshGrid removed Tor, so every route is direct.
  */
 object OkHttpProvider {
     enum class Route {
@@ -69,16 +67,6 @@ object OkHttpProvider {
         }
     }
 
-    private fun baseBuilderForCurrentProxy(): Pair<OkHttpClient.Builder, Route> {
-        val builder = OkHttpClient.Builder()
-        val torProvider = ArtiTorManager.getInstance()
-        val socks: InetSocketAddress? = torProvider.currentSocksAddress()
-        // If a SOCKS address is defined, always use it. TorProvider sets this as soon as Tor mode is ON,
-        // even before bootstrap, to prevent any direct connections from occurring.
-        if (socks != null) {
-            val proxy = Proxy(Proxy.Type.SOCKS, socks)
-            builder.proxy(proxy)
-        }
-        return builder to if (socks == null) Route.DIRECT else Route.TOR
-    }
+    /** MoshGrid has no Tor: every connection is direct. */
+    private fun baseBuilderForCurrentProxy(): Pair<OkHttpClient.Builder, Route> = OkHttpClient.Builder() to Route.DIRECT
 }

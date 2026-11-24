@@ -19,6 +19,13 @@ fun distanceM(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
     return 2 * EARTH_RADIUS_M * asin(sqrt(h.coerceIn(0.0, 1.0)))
 }
 
+/** Last-known fixes older than this are not used to seed our position on start. */
+const val LAST_KNOWN_MAX_AGE_MS = 10 * 60_000L
+
+/** The newest of (fix time, fix) pairs that is not in the future and at most [LAST_KNOWN_MAX_AGE_MS] old. */
+fun <T> freshestRecent(fixes: List<Pair<Long, T>>, nowMs: Long): T? =
+    fixes.filter { (t, _) -> t <= nowMs && nowMs - t <= LAST_KNOWN_MAX_AGE_MS }.maxByOrNull { it.first }?.second
+
 /** Share a new location when we moved more than 15 m, or 2 minutes passed since the last share. */
 fun shouldSend(last: LocationUpdate?, current: LocationUpdate, nowMs: Long): Boolean {
     if (last == null) return true

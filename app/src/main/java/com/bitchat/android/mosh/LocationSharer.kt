@@ -31,6 +31,16 @@ class LocationSharer(private val context: Context) : LocationListener {
                 }
             }
             running = true
+            // A fresh fix can take minutes in a crowd. Start from the newest position Android already has
+            // (its real age is kept, so Help widens its circle) instead of "location unknown".
+            val now = System.currentTimeMillis()
+            freshestRecent(
+                listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+                    .filter { lm.allProviders.contains(it) }
+                    .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+                    .map { it.time to it },
+                now,
+            )?.let { onLocationChanged(it) }
         } catch (e: SecurityException) {
             Log.w(TAG, "Location permission missing; sharing paused")
             MoshMonitor.event(context, "permission_revoked")
@@ -68,7 +78,11 @@ class LocationSharer(private val context: Context) : LocationListener {
     @Deprecated("Required on API < 29")
     override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
     override fun onProviderEnabled(provider: String) {}
-    override fun onProviderDisabled(provider: String) { MoshMonitor.event(context, "location_off") }
+    override fun onProviderDisabled(provider: String) {
+        // One provider (for example network location) can be off while GPS works: only record a real outage.
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+        if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(lm)) MoshMonitor.event(context, "location_off")
+    }
 
     private fun batteryPct(): Int {
         val intent: Intent? = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))

@@ -30,4 +30,15 @@ class SendRuleAndTicksTest {
     @Test fun failed_is_not_confirmed() = assertEquals(Tick.NOT_CONFIRMED, tickFor(DeliveryStatus.Failed("x"), 0, 0))
     @Test fun sent_older_than_10_minutes_is_not_confirmed() = assertEquals(Tick.NOT_CONFIRMED, tickFor(DeliveryStatus.Sent, 0, 600_001))
     @Test fun partially_delivered_is_two_grey() = assertEquals(Tick.TWO_GREY, tickFor(DeliveryStatus.PartiallyDelivered(1, 2), 0, 0))
+
+    @Test fun last_known_fix_picks_the_newest_recent_one() {
+        val now = 1_000_000L
+        assertEquals("b", freshestRecent(listOf(now - 60_000L to "a", now - 5_000L to "b"), now))
+    }
+
+    @Test fun last_known_fix_ignores_old_and_future_fixes() {
+        val now = 1_000_000L
+        assertEquals(null, freshestRecent(listOf(now - LAST_KNOWN_MAX_AGE_MS - 1 to "old", now + 1 to "future"), now))
+        assertEquals(null, freshestRecent(emptyList<Pair<Long, String>>(), now))
+    }
 }

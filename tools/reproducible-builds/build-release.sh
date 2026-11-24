@@ -30,8 +30,6 @@ if [ "$actual_java_version" != "$expected_java_version" ]; then
   exit 1
 fi
 
-"$PROJECT_ROOT/tools/arti-build/verify-checksums.sh"
-
 export GRADLE_USER_HOME="${BITCHAT_GRADLE_USER_HOME:-$PROJECT_ROOT/.reproducible-build/gradle-home}"
 export LC_ALL=C.UTF-8
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$PROJECT_ROOT" log -1 --format=%ct)}"
@@ -107,7 +105,8 @@ if ! [[ "$source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
   echo "error: source commit must be a full Git object ID" >&2
   exit 1
 fi
-native_manifest_sha256="$(sha256sum "$PROJECT_ROOT/tools/arti-build/SHA256SUMS" | awk '{print $1}')"
+# MoshGrid ships no native libraries (Tor/Arti removed).
+native_manifest_sha256="none"
 
 cat > "$OUTPUT_DIR/BUILDINFO.json" <<EOF
 {

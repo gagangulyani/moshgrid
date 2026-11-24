@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import com.bitchat.android.BuildConfig
-import com.bitchat.android.net.ArtiTorManager
 import com.bitchat.android.net.OkHttpProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +44,6 @@ class UniversalApkManager(
         private const val PROGRESS_FILE_NAME = "download_progress.json"
         private const val APK_FILE_PREFIX = "bitchat-universal-"
         private const val TEMP_FILE_NAME = "download_temp.apk"
-        private const val ROUTE_READY_TIMEOUT_MILLIS = 60_000L
 
         // Download buffer size (128KB)
         private const val BUFFER_SIZE = 128 * 1024
@@ -199,15 +197,6 @@ class UniversalApkManager(
 
         try {
             phaseCallback?.invoke(ApkDownloader.DownloadPhase.AwaitingNetworkRoute)
-            if (!ArtiTorManager.getInstance().awaitSelectedRoute(ROUTE_READY_TIMEOUT_MILLIS)) {
-                return@withContext Result.failure(
-                    ApkDownloadException(
-                        message = "Tor is still connecting.",
-                        reason = ApkDownloadFailureReason.TorConnecting,
-                        retryable = true
-                    )
-                )
-            }
 
             val failures = mutableListOf<ApkDownloadException>()
             val sources = sourcesWithResumeFirst()

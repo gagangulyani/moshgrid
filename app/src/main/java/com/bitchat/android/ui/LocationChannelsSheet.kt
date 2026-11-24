@@ -69,9 +69,6 @@ import com.bitchat.android.geohash.GeohashBookmarksStore
 import com.bitchat.android.geohash.GeohashChannel
 import com.bitchat.android.geohash.GeohashChannelLevel
 import com.bitchat.android.geohash.LocationChannelManager
-import com.bitchat.android.net.ArtiTorManager
-import com.bitchat.android.net.TorMode
-import com.bitchat.android.net.TorPreferenceManager
 import com.bitchat.android.ui.theme.BitchatMotion
 import com.bitchat.android.ui.theme.LocalBitchatPalette
 import com.bitchat.android.wifiaware.WifiAwareController
@@ -582,52 +579,6 @@ fun LocationChannelsSheet(
                                     }
                                 }
                             )
-                        }
-                    }
-
-                    item(key = "tor_routing") {
-                        val torProvider = remember { ArtiTorManager.getInstance() }
-                        val torAvailable = remember { torProvider.isTorAvailable() }
-                        var torMode by remember { mutableStateOf(TorPreferenceManager.get(context)) }
-
-                        Column {
-                            AboutSectionLabel(text = stringResource(R.string.about_network))
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = AboutHorizontalPadding),
-                                color = colorScheme.surface,
-                                shape = AboutCardShape
-                            ) {
-                                ChannelSettingsToggleRow(
-                                    icon = Icons.Filled.Security,
-                                    title = stringResource(R.string.location_tor_routing_title),
-                                    subtitle = stringResource(R.string.location_tor_routing_desc),
-                                    checked = torMode == TorMode.ON,
-                                    enabled = torAvailable,
-                                    statusIndicator = {
-                                        BitchatBadge(text = stringResource(R.string.badge_recommended))
-                                    },
-                                    onCheckedChange = { enabled ->
-                                        if (torAvailable) {
-                                            torMode = if (enabled) TorMode.ON else TorMode.OFF
-                                            TorPreferenceManager.set(context, torMode)
-                                        }
-                                    }
-                                )
-                            }
-                            if (!torAvailable) {
-                                Text(
-                                    text = stringResource(R.string.tor_not_available_in_this_build),
-                                    fontSize = 12.sp,
-                                    fontFamily = BitchatFontFamily,
-                                    color = palette.textTertiary,
-                                    modifier = Modifier.padding(
-                                        start = AboutHorizontalPadding + ChannelRowHorizontal,
-                                        top = 8.dp
-                                    )
-                                )
-                            }
                         }
                     }
 

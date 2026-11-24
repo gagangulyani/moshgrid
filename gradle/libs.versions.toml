@@ -45,7 +45,6 @@ nordic-ble = "2.11.0"
 
 # WebSocket
 okhttp = "5.4.0"
-tor-android-binary = "0.4.4.6"
 
 
 # Google Play Services
@@ -127,9 +126,7 @@ nordic-ble = { module = "no.nordicsemi.android:ble", version.ref = "nordic-ble" 
 # WebSocket
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver3", version.ref = "okhttp" }
-tor-android-binary = { module = "org.torproject:tor-android-binary", version.ref = "tor-android-binary" }
 
-# Tor (embed) intentionally not pinned yet; add once repo is chosen
 
 # Google Play Services
 

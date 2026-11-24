@@ -51,8 +51,6 @@ import androidx.compose.foundation.layout.RowScope
 import com.bitchat.android.R
 import com.bitchat.android.core.ui.component.button.BitChatBrandButton
 import com.bitchat.android.core.ui.component.button.CloseButton
-import com.bitchat.android.net.ArtiTorManager
-import com.bitchat.android.net.TorMode
 import com.bitchat.android.ui.theme.BitchatMotion
 import com.bitchat.android.ui.theme.LocalBitchatPalette
 
@@ -156,21 +154,8 @@ internal data class TorConnectionVisual(
 
 @Composable
 internal fun rememberTorConnectionVisual(normal: Color): TorConnectionVisual {
-    val palette = LocalBitchatPalette.current
-    val colorScheme = MaterialTheme.colorScheme
-    val torStatus by remember { ArtiTorManager.getInstance() }.statusFlow.collectAsState()
-
-    // ~28% of the loud accent mixed into the base tint keeps the hue without intensity.
-    val mutedConnecting = lerp(normal, palette.accentOrange, 0.28f)
-    val mutedFailed = lerp(normal, colorScheme.error, 0.30f)
-
-    val target = when {
-        torStatus.mode == TorMode.OFF -> TorConnectionVisual(normal, isProgress = false)
-        torStatus.running && torStatus.bootstrapPercent >= 100 ->
-            TorConnectionVisual(normal, isProgress = false)
-        torStatus.running -> TorConnectionVisual(mutedConnecting, isProgress = true)
-        else -> TorConnectionVisual(mutedFailed, isProgress = true)
-    }
+    // MoshGrid has no Tor: the connection indicator is always in its normal state.
+    val target = TorConnectionVisual(normal, isProgress = false)
 
     val animatedTint by animateColorAsState(
         targetValue = target.tint,

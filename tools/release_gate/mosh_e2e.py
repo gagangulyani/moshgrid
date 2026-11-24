@@ -36,6 +36,10 @@ REPO = Path(__file__).resolve().parents[2]
 
 # --- device helpers ----------------------------------------------------------------------------
 
+class DeviceLost(RuntimeError):
+    """An emulator or phone disappeared mid-run; nothing after it can be trusted."""
+
+
 class Phone:
     def __init__(self, serial: str, alias: str, name: str):
         self.serial, self.alias, self.name = serial, alias, name
@@ -44,7 +48,14 @@ class Phone:
 
     def sh(self, cmd: str, timeout: int = 60) -> str:
         r = subprocess.run(["adb", "-s", self.serial, "shell", cmd], capture_output=True, text=True, timeout=timeout)
+        if r.returncode != 0 and ("not found" in r.stderr or "offline" in r.stderr or "no devices" in r.stderr):
+            # A vanished device makes "absence" checks (no notification, app not in front) pass by accident.
+            raise DeviceLost(f"{self.alias} ({self.serial}) is gone: {r.stderr.strip()[:120]}")
         return r.stdout
+
+    def alive(self) -> bool:
+        r = subprocess.run(["adb", "-s", self.serial, "get-state"], capture_output=True, text=True, timeout=20)
+        return r.stdout.strip() == "device"
 
     def hook(self, cmd: str, **extras) -> dict:
         try:
@@ -205,7 +216,6 @@ def prepare(r: Run):
         p.bluetooth(True)
         p.location(True)
         p.hook("test_relay", url=r.relay_url)
-        p.hook("tor", mode="OFF")
         p.stop()
         time.sleep(1)
         p.launch(6)
@@ -349,6 +359,34 @@ def sc_no_false_alarm_after_replay(r: Run):
     time.sleep(30)
     r.check("no Help notification after replay", not b.help_notification())
     r.check("no active Help after replay", not help_seen(r, b, a))
+
+
+def sc_friend_phone_dies(r: Run):
+    """A friend's phone goes dark (app killed, radios off): their last Help and location stay; it catches up when back."""
+    a, b = r.a, r.b
+    b.hook("mosh_send", peer=a.peer_id, kind="location")
+    r.check("A has B's location before", wait(lambda: a.state_of(b).get("has_location"), 60))
+    b.hook("mosh_help", action="raise")
+    r.check("A has B's Help before", wait(lambda: help_seen(r, a, b), 90))
+    # B's phone "dies": no radios, app killed. adb still sees the emulator, so the test can watch.
+    b.stop()
+    b.sh("cmd connectivity airplane-mode enable")
+    b.bluetooth(False)
+    time.sleep(60)
+    r.check("A keeps B's Help while B is dark", help_seen(r, a, b))
+    r.check("A keeps B's last location while B is dark", a.state_of(b).get("has_location"))
+    a.stop()
+    a.launch(6)
+    r.check("A still has both after A restarts", help_seen(r, a, b) and a.state_of(b).get("has_location"))
+    routes = a.hook("mosh_help", action="raise").get("routes", {})
+    r.check("A's Help to dark B is not reported as sent", routes.get(b.peer_id) not in ("MESH", "MESH_AND_NOSTR"), routes)
+    # B comes back.
+    b.sh("cmd connectivity airplane-mode disable")
+    b.bluetooth(True)
+    b.launch(6)
+    r.check("B gets A's Help after coming back", wait(lambda: help_seen(r, b, a), 240))
+    b.hook("mosh_help", action="cancel")
+    r.check("A sees B's cancel", wait(lambda: not help_seen(r, a, b), 180))
 
 
 def sc_own_help_banner(r: Run):
@@ -536,6 +574,7 @@ SCENARIOS = {
     "relay_outage": sc_relay_outage,
     "back_to_bluetooth": sc_back_to_bluetooth,
     "no_false_alarm_after_replay": sc_no_false_alarm_after_replay,
+    "friend_phone_dies": sc_friend_phone_dies,
     "own_help_banner": sc_own_help_banner,
     "notification_opens_find": sc_notification_opens_find,
     "back_navigation": sc_back_navigation,
@@ -573,6 +612,9 @@ def main():
     relay = Relay(args.relay_port, out / "relay.log")
     r = Run(Phone(args.serial_a, "A", "Ana"), Phone(args.serial_b, "B", "Ben"), relay,
             args.relay_url or f"ws://10.0.2.2:{args.relay_port}")
+    missing = [p.serial for p in (r.a, r.b) if not p.alive()]
+    if missing:
+        raise SystemExit(f"Not connected: {', '.join(missing)}. Boot the emulators (or plug in phones) and check `adb devices`.")
     for p in (r.a, r.b):
         run_adb(p.serial, ["logcat", "-b", "crash", "-c"])
     try:
@@ -586,16 +628,27 @@ def main():
         for name in names:
             r.scenario = name
             print(f"== {name}", flush=True)
-            reset_screens(r)
+            for p in (r.a, r.b):
+                if not p.alive():
+                    raise DeviceLost(f"{p.alias} ({p.serial}) is not connected")
             try:
+                reset_screens(r)
                 SCENARIOS[name](r)
+            except DeviceLost:
+                raise
             except Exception as e:  # noqa: BLE001 - one scenario failing must not stop the rest
                 r.check("scenario ran without error", False, repr(e))
             finally:
-                cancel_all(r)
+                try:
+                    cancel_all(r)
+                except DeviceLost:
+                    pass
         r.scenario = "crashes"
         for p in (r.a, r.b):
             r.check(f"{p.alias} no crashes", p.crashes() == 0)
+    except DeviceLost as e:
+        r.check("devices stayed connected", False, str(e))
+        print(f"\nSTOPPED: {e}. Results after this point would be meaningless; reboot the device and rerun.", flush=True)
     finally:
         relay.stop()
     failed = [x for x in r.results if not x["ok"]]

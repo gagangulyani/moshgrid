@@ -73,7 +73,6 @@ Use JDK 21 and the Android SDK versions in `gradle/libs.versions.toml`.
 ./gradlew testDebugUnitTest lintDebug
 ./gradlew connectedAndroidTest
 ./gradlew clientRewriteContractTest
-tools/arti-build/verify-checksums.sh
 ```
 
 CI runs `testDebugUnitTest lintDebug`; instrumented tests require a device.

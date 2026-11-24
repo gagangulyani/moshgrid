@@ -84,7 +84,6 @@ object TestHookDriver {
             "mosh_state" -> moshState(context, intent.requiredString("peer"))
             "mosh_help" -> moshHelp(context, intent.requiredString("action"))
             "test_relay" -> testRelay(context, intent.getStringExtra("url").orEmpty())
-            "tor" -> tor(context, intent.requiredString("mode"))
             "net" -> net(context)
             "verification_set" -> verificationSet(
                 context,
@@ -368,21 +367,12 @@ object TestHookDriver {
         return ok("test_relay").put("url", url)
     }
 
-    private fun tor(context: Context, mode: String): JSONObject {
-        val m = com.bitchat.android.net.TorMode.valueOf(mode.uppercase())
-        com.bitchat.android.net.TorPreferenceManager.set(context, m)
-        // Write through now: tests restart the app straight after.
-        context.getSharedPreferences("bitchat_settings", Context.MODE_PRIVATE).edit().putString("tor_mode", m.name).commit()
-        return ok("tor").put("mode", m.name)
-    }
-
     /** Internet path state: relay connections and what the sender believes. */
     private fun net(context: Context): JSONObject {
         val nostr = com.bitchat.android.nostr.NostrRelayManager.getInstance(context)
         val relays = JSONArray()
         nostr.relays.value.forEach { relays.put(JSONObject().put("url", it.url).put("connected", it.isConnected)) }
         return ok("net").put("online", nostr.isConnected.value).put("relays", relays)
-            .put("tor", com.bitchat.android.net.TorPreferenceManager.get(context).name)
     }
 
     /** Raise or cancel Help through the real repeater (the path the Help button uses). */

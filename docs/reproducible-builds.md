@@ -24,9 +24,6 @@ GitHub/Google Play publication checklist.
 - Android platform, Platform Tools, and Build Tools archives by filename and
   SHA-256, plus the accepted SDK license-text SHA-1 required to use them
 - Kotlin/JVM toolchain and bytecode target
-- Arti source tag and full commit, stable native build epoch, Rust, `cargo-ndk`,
-  Android NDK, Cargo lockfile, digest-pinned Rust builder image, and immutable
-  Debian package snapshot
 - immutable full commit SHAs for every third-party GitHub Action
 
 The build uses a clean source tree, an isolated Gradle user home, UTC, a stable
@@ -54,8 +51,6 @@ The authoritative pins are:
 - `wear/gradle.lockfile`
 - `gradle/verification-metadata.xml`
 - `tools/reproducible-builds/TOOLCHAIN.env`
-- `tools/arti-build/TOOLCHAIN.env`
-- `tools/arti-build/Cargo.lock`
 
 ## Reproduce a release locally
 
@@ -265,8 +260,8 @@ inputs. Compiled artifacts and dependency metadata remain checksum-verified.
 
 When changing Gradle, update the wrapper and independently verify the new
 distribution SHA-256. When changing JDK or Android tools, update the exact
-version, archive checksum, and base-image digest together. Native updates follow
-[`tools/arti-build/README.md`](../tools/arti-build/README.md).
+version, archive checksum, and base-image digest together. MoshGrid ships no
+native libraries (Tor/Arti was removed).
 
 ## References
 
