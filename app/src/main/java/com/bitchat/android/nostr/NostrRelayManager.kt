@@ -38,13 +38,7 @@ class NostrRelayManager private constructor() {
             return shared
         }
 
-        // Default relay list (same as iOS)
-        private val DEFAULT_RELAYS = listOf(
-            "wss://relay.damus.io",
-            "wss://relay.primal.net",
-            "wss://offchain.pub",
-            "wss://nostr21.com"
-        )
+        private val DEFAULT_RELAYS = DefaultNostrRelays.urls
         
         // Reconnect backoff lives in RelayReconnectPolicy.
 
@@ -416,12 +410,7 @@ class NostrRelayManager private constructor() {
     init {
         // Initialize with default relays - avoid static initialization order issues
         try {
-            val defaultRelayUrls = NostrTestRelays.override?.takeIf { com.bitchat.android.BuildConfig.DEBUG } ?: listOf(
-                "wss://relay.damus.io",
-                "wss://relay.primal.net",
-                "wss://offchain.pub",
-                "wss://nostr21.com"
-            )
+            val defaultRelayUrls = NostrTestRelays.override?.takeIf { com.bitchat.android.BuildConfig.DEBUG } ?: DefaultNostrRelays.urls
             relaysList.addAll(defaultRelayUrls.map { Relay(it) })
             nonLiveRelayUrls.addAll(defaultRelayUrls)
             _relays.value = relaysList.toList()
@@ -1238,4 +1227,20 @@ class NostrRelayManager private constructor() {
  */
 object NostrTestRelays {
     @Volatile var override: List<String>? = null
+}
+
+/**
+ * Relays every install connects to. Kept outside NostrRelayManager's companion because the
+ * shared instance is built there eagerly, before later companion fields are initialised.
+ * MoshGrid's own relay comes first; it stores only kind 1059 gift wraps. The public relays stay
+ * as fallbacks so a relay outage never stops Help.
+ */
+object DefaultNostrRelays {
+    val urls: List<String> = listOf(
+        "wss://relay.gagangulyani.com",
+        "wss://relay.damus.io",
+        "wss://relay.primal.net",
+        "wss://offchain.pub",
+        "wss://nostr21.com"
+    )
 }
