@@ -59,7 +59,9 @@ object NostrBackgroundRuntime {
         }
 
         subscriptions.connect()
-        subscribeAccountDm()
+        // Deriving the account key is slow elliptic-curve maths: never on the main thread at startup
+        // (it caused "failed to complete startup" ANRs on slow phones). resetSubscriptions does the same.
+        scope.launch { subscribeAccountDm() }
         observeSelectedChannel()
         startPresenceScheduler()
     }

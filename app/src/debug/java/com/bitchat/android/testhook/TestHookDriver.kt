@@ -369,7 +369,30 @@ object TestHookDriver {
             }
         }
         com.bitchat.android.mosh.MoshRuntime.updateMyLocation(com.bitchat.android.mosh.LocationUpdate(lat, lon, 5f, now, 80))
+        demoGroup(now)
         return ok("mosh_demo").put("friends", made)
+    }
+
+    /** A synthetic group made by me with Priya, Jo and Sam: chat from them, and one message of mine with mixed receipts. */
+    private fun demoGroup(now: Long) {
+        val g = com.bitchat.android.mosh.MoshGroups
+        val me = g.myKeyHex() ?: return
+        val people = com.bitchat.android.mosh.MoshRuntime.friends.friends().filter { it.status == com.bitchat.android.mosh.FriendStatus.FRIEND }
+        if (people.size < 3) return
+        val members = people.map { g.memberFromFriend(it) }
+        val (priya, jo, sam) = Triple(members.first { it.name == "Priya" }, members.first { it.name == "Jo" }, members.first { it.name == "Sam" })
+        val id = "demo-group"
+        g.store.delete(id)
+        g.store.create(id, "Camp crew", com.bitchat.android.mosh.GroupMember(me, "", "Ana"), listOf(priya, jo, sam), now - 3_600_000)
+        fun from(m: com.bitchat.android.mosh.GroupMember, mid: String, text: String, minsAgo: Long) =
+            g.store.applyMessage(m.noiseKeyHex, com.bitchat.android.mosh.GroupMessage(id, mid, 0, text, now - minsAgo * 60_000), now - minsAgo * 60_000)
+        from(priya, "d1", "Reached the gate, queue is long", 40)
+        from(jo, "d2", "Main stage at 8?", 22)
+        g.store.addOutgoing(id, "d3", 0, "Yes. Meet at the big tree by the bar first", now - 20 * 60_000)
+        g.store.markSent(id, "d3", sam.noiseKeyHex, now - 19 * 60_000, overInternet = true)
+        g.store.applyReceipt(priya.noiseKeyHex, com.bitchat.android.mosh.GroupReceipt(id, "d3", true, now - 18 * 60_000))
+        g.store.applyReceipt(jo.noiseKeyHex, com.bitchat.android.mosh.GroupReceipt(id, "d3", false, now - 17 * 60_000))
+        from(sam, "d4", "Battery low, coming in 10", 2)
     }
 
     private fun moshSend(context: Context, peerID: String, kind: String, token: String): JSONObject {

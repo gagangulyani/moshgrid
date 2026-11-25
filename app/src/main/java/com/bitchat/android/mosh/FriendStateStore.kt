@@ -17,6 +17,9 @@ fun MoshPayload.madeAtMs(): Long = when (this) {
     is MeetingPoint -> setAtMs
     is HelpAlert -> raisedAtMs
     is HelpCancel -> cancelledAtMs
+    is GroupRoster -> updatedAtMs
+    is GroupMessage -> sentAtMs
+    is GroupReceipt -> atMs
 }
 
 class FriendStateStore(
@@ -93,6 +96,8 @@ class FriendStateStore(
                 saveSnapshot()
             }
             is MeetingPoint -> setMeetingRecord(p, own = false)
+            // Groups have their own store (MoshGroups); they never reach this one.
+            is GroupRoster, is GroupMessage, is GroupReceipt -> return HelpChange.NONE
             is HelpAlert -> {
                 saveSnapshot()
                 if (p.alertId in cancelledHelp) return HelpChange.NONE

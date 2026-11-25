@@ -72,7 +72,7 @@ private enum class Tone { HELP, WARN, INFO }
  * pill in the middle of the bottom bar (with the Ask for help bar above it), and You on the right.
  */
 @Composable
-fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null) {
+fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null, openGroup: Pair<String, Long>? = null) {
     val prefs = MoshRuntime.prefs
     val wipes by MoshRuntime.wipes.collectAsState()
     var onboarded by remember(wipes) { mutableStateOf(prefs.onboardingDone) }
@@ -83,6 +83,11 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
     var tab by remember { mutableStateOf(HomeTab.CHATS) }
     var page by remember { mutableStateOf<Page?>(null) }
     var friendOpen by remember { mutableStateOf<String?>(null) }
+    // Groups: the open chat, its info page, and the new-group page.
+    var groupOpen by remember { mutableStateOf<String?>(null) }
+    var groupInfo by remember { mutableStateOf(false) }
+    var newGroup by remember { mutableStateOf(false) }
+    LaunchedEffect(openGroup) { if (openGroup != null) { groupOpen = openGroup.first; groupInfo = false; page = null } }
     var showHelp by remember { mutableStateOf(false) }
     // Friend to focus on Find, from a tapped Help notification. Cleared when Find is opened by hand.
     var findFocus by remember { mutableStateOf(openFind?.first) }
@@ -142,6 +147,13 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
     Box(Modifier.fillMaxSize().statusBarsPadding()) {
         when {
             showHelp -> HelpScreen { showHelp = false }
+            newGroup -> NewGroupScreen(chatViewModel.nickname.collectAsState().value, onBack = { newGroup = false }) { id ->
+                newGroup = false; groupOpen = id
+            }
+            groupOpen != null && groupInfo -> GroupInfoScreen(groupOpen!!, onBack = { groupInfo = false },
+                onFind = { peer -> groupInfo = false; groupOpen = null; goFind(peer, false) },
+                onDeleted = { groupInfo = false; groupOpen = null })
+            groupOpen != null -> GroupThreadScreen(groupOpen!!, onBack = { groupOpen = null }, onInfo = { groupInfo = true })
             page == Page.FRIENDS -> MoshPage("Friends", { if (friendOpen != null) friendOpen = null else page = null }) {
                 FriendsScreen(onAddFriend = { chatViewModel.showVerificationSheet() },
                     onChat = { peer -> chatViewModel.showPrivateChatSheet(peer) },
@@ -162,6 +174,8 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
                             onNetwork = { page = Page.NETWORK },
                             onFriends = { page = Page.FRIENDS },
                             onSettings = { tab = HomeTab.YOU },
+                            onOpenGroup = { groupOpen = it },
+                            onNewGroup = { newGroup = true },
                             banners = { Column { banners() } },
                         )
                         HomeTab.FIND -> Column {

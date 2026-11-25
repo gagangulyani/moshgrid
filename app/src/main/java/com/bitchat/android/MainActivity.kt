@@ -65,7 +65,11 @@ class MainActivity : OrientationAwareActivity() {
     /** MoshGrid: a Help notification was tapped. The timestamp makes a repeat tap a new request. */
     private val openFindRequest = androidx.compose.runtime.mutableStateOf<Pair<String, Long>?>(null)
 
+    /** MoshGrid: a group message notification was tapped. */
+    private val openGroupRequest = androidx.compose.runtime.mutableStateOf<Pair<String, Long>?>(null)
+
     private fun takeOpenFindRequest(intent: Intent?) {
+        intent?.getStringExtra(com.bitchat.android.mosh.GroupNotifier.EXTRA_OPEN_GROUP)?.let { openGroupRequest.value = it to System.nanoTime() }
         val peer = intent?.getStringExtra(com.bitchat.android.mosh.HelpNotifier.EXTRA_OPEN_FIND) ?: return
         openFindRequest.value = peer to System.nanoTime()
     }
@@ -359,7 +363,8 @@ class MainActivity : OrientationAwareActivity() {
                 // MoshGrid: setup checklist on first run, then Chats / Find / Friends / Settings + Help.
                 com.bitchat.android.ui.mosh.MoshShell(
                     chatViewModel = chatViewModel,
-                    openFind = openFindRequest.value
+                    openFind = openFindRequest.value,
+                    openGroup = openGroupRequest.value,
                 )
             }
             

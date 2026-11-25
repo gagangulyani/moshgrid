@@ -40,6 +40,32 @@ data class HelpAlert(
 
 data class HelpCancel(val alertId: String, val cancelledAtMs: Long) : MoshPayload
 
+/** One person in a group: their Noise static key, their Nostr key (empty if unknown) and the name the creator knows them by. */
+data class GroupMember(val noiseKeyHex: String, val nostrPubHex: String, val name: String)
+
+/** Who is in a group. Only the creator sends it; the newest [updatedAtMs] wins. The creator is always a member. */
+data class GroupRoster(
+    val groupId: String,
+    val name: String,
+    val creatorKeyHex: String,
+    val updatedAtMs: Long,
+    val members: List<GroupMember>,
+) : MoshPayload
+
+/** A group message. [kind] [GroupMessage.TEXT] carries [text]; [GroupMessage.LEFT] says the sender left. */
+data class GroupMessage(
+    val groupId: String,
+    val messageId: String,
+    val kind: Int,
+    val text: String,
+    val sentAtMs: Long,
+) : MoshPayload {
+    companion object { const val TEXT = 0; const val LEFT = 1 }
+}
+
+/** Tells the sender of [messageId] that it arrived ([read] false) or was seen ([read] true). */
+data class GroupReceipt(val groupId: String, val messageId: String, val read: Boolean, val atMs: Long) : MoshPayload
+
 /**
  * Wire format: version byte (1), then fixed fields in order. Doubles and longs big-endian,
  * strings as u8 length + UTF-8. Decoding is fail-closed: anything malformed or out of range is null.
@@ -49,6 +75,8 @@ object MoshCodec {
     const val MAX_ID_BYTES = 64
     const val MAX_LABEL_BYTES = 64
     const val MAX_NOTE_BYTES = 140
+    const val MAX_GROUP_TEXT_BYTES = 500
+    const val MAX_GROUP_MEMBERS = 12
 
     fun encode(p: MoshPayload): NoisePayload {
         require(isValid(p)) { "invalid MoshGrid payload: $p" }
@@ -80,6 +108,22 @@ object MoshCodec {
                 out.str(p.alertId); out.writeLong(p.cancelledAtMs)
                 NoisePayloadType.HELP_CANCEL
             }
+            is GroupRoster -> {
+                out.str(p.groupId); out.str(p.name); out.key(p.creatorKeyHex); out.writeLong(p.updatedAtMs)
+                out.writeByte(p.members.size)
+                p.members.forEach { m -> out.key(m.noiseKeyHex); out.optKey(m.nostrPubHex); out.str(m.name) }
+                NoisePayloadType.GROUP_ROSTER
+            }
+            is GroupMessage -> {
+                out.str(p.groupId); out.str(p.messageId); out.writeByte(p.kind)
+                val b = p.text.toByteArray(Charsets.UTF_8); out.writeShort(b.size); out.write(b)
+                out.writeLong(p.sentAtMs)
+                NoisePayloadType.GROUP_MESSAGE
+            }
+            is GroupReceipt -> {
+                out.str(p.groupId); out.str(p.messageId); out.writeBoolean(p.read); out.writeLong(p.atMs)
+                NoisePayloadType.GROUP_RECEIPT
+            }
         }
         out.flush()
         return NoisePayload(type, bytes.toByteArray())
@@ -101,6 +145,19 @@ object MoshCodec {
                     input.str(), input.readDouble(), input.readDouble(), input.readFloat(), input.str(), input.readLong()
                 )
                 NoisePayloadType.HELP_CANCEL -> HelpCancel(input.str(), input.readLong())
+                NoisePayloadType.GROUP_ROSTER -> {
+                    val id = input.str(); val name = input.str(); val creator = input.key(); val at = input.readLong()
+                    val n = input.readUnsignedByte()
+                    if (n > MAX_GROUP_MEMBERS) null
+                    else GroupRoster(id, name, creator, at, List(n) { GroupMember(input.key(), input.optKey(), input.str()) })
+                }
+                NoisePayloadType.GROUP_MESSAGE -> {
+                    val id = input.str(); val msg = input.str(); val kind = input.readUnsignedByte()
+                    val len = input.readUnsignedShort()
+                    if (len > MAX_GROUP_TEXT_BYTES) null
+                    else { val b = ByteArray(len); input.readFully(b); GroupMessage(id, msg, kind, String(b, Charsets.UTF_8), input.readLong()) }
+                }
+                NoisePayloadType.GROUP_RECEIPT -> GroupReceipt(input.str(), input.str(), input.readBoolean(), input.readLong())
                 else -> null
             }
             p?.takeIf { input.available() == 0 && isValid(it) }
@@ -110,11 +167,17 @@ object MoshCodec {
     }
 
     fun isMoshType(type: NoisePayloadType): Boolean = type == NoisePayloadType.LOCATION ||
-        type == NoisePayloadType.MEETING_POINT || type == NoisePayloadType.HELP || type == NoisePayloadType.HELP_CANCEL
+        type == NoisePayloadType.MEETING_POINT || type == NoisePayloadType.HELP || type == NoisePayloadType.HELP_CANCEL ||
+        isGroupType(type)
+
+    fun isGroupType(type: NoisePayloadType): Boolean = type == NoisePayloadType.GROUP_ROSTER ||
+        type == NoisePayloadType.GROUP_MESSAGE || type == NoisePayloadType.GROUP_RECEIPT
 
     private fun validCoord(lat: Double, lon: Double) = lat in -90.0..90.0 && lon in -180.0..180.0
     private fun fits(s: String, max: Int) = s.toByteArray(Charsets.UTF_8).size <= max
     private fun validAccuracy(a: Float) = a.isFinite() && a >= 0f
+    private fun validId(s: String) = s.isNotEmpty() && fits(s, MAX_ID_BYTES)
+    private val HEX_KEY = Regex("^[0-9a-f]{64}$")
 
     private fun isValid(p: MoshPayload): Boolean = when (p) {
         is LocationUpdate -> validCoord(p.lat, p.lon) && validAccuracy(p.accuracyM) && p.batteryPct in 0..100
@@ -123,7 +186,23 @@ object MoshCodec {
         is HelpAlert -> validCoord(p.lat, p.lon) && validAccuracy(p.accuracyM) && fits(p.alertId, MAX_ID_BYTES) &&
             p.alertId.isNotEmpty() && fits(p.note, MAX_NOTE_BYTES)
         is HelpCancel -> fits(p.alertId, MAX_ID_BYTES) && p.alertId.isNotEmpty()
+        is GroupRoster -> validId(p.groupId) && p.name.isNotBlank() && fits(p.name, MAX_LABEL_BYTES) &&
+            HEX_KEY.matches(p.creatorKeyHex) && p.members.size in 2..MAX_GROUP_MEMBERS &&
+            p.members.all { HEX_KEY.matches(it.noiseKeyHex) && (it.nostrPubHex.isEmpty() || HEX_KEY.matches(it.nostrPubHex)) && fits(it.name, MAX_LABEL_BYTES) } &&
+            p.members.map { it.noiseKeyHex }.toSet().size == p.members.size &&
+            p.members.any { it.noiseKeyHex == p.creatorKeyHex }
+        is GroupMessage -> validId(p.groupId) && validId(p.messageId) && fits(p.text, MAX_GROUP_TEXT_BYTES) &&
+            when (p.kind) { GroupMessage.TEXT -> p.text.isNotBlank(); GroupMessage.LEFT -> p.text.isEmpty(); else -> false }
+        is GroupReceipt -> validId(p.groupId) && validId(p.messageId)
     }
+
+    /** A 32-byte key, written raw. Hex in memory is lowercase. */
+    private fun DataOutputStream.key(hex: String) { write(hexBytes(hex)) }
+    private fun DataInputStream.key(): String { val b = ByteArray(32); readFully(b); return b.joinToString("") { "%02x".format(it) } }
+    /** Optional key: one byte 0 (absent) or 32, then the key. */
+    private fun DataOutputStream.optKey(hex: String) { if (hex.isEmpty()) writeByte(0) else { writeByte(32); key(hex) } }
+    private fun DataInputStream.optKey(): String = when (readUnsignedByte()) { 0 -> ""; 32 -> key(); else -> throw IOException("bad key length") }
+    private fun hexBytes(hex: String): ByteArray = ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
 
     private fun DataOutputStream.str(s: String) {
         val b = s.toByteArray(Charsets.UTF_8)
@@ -146,10 +225,14 @@ object MoshCodec {
 object MoshInbox {
     @Volatile var friends: FriendRegistry? = null
     @Volatile var sink: ((fromPeerID: String, payload: MoshPayload) -> Unit)? = null
+    /** True when [fromPeerID] is in one of my groups. Lets group payloads from non-friends through; the group store checks which group. */
+    @Volatile var groupMember: ((fromPeerID: String) -> Boolean)? = null
 
     fun receive(fromPeerID: String, payload: NoisePayload, friends: FriendRegistry? = this.friends,
                 sink: ((String, MoshPayload) -> Unit)? = this.sink): Boolean {
-        if (friends == null || !friends.isFriend(fromPeerID)) return false
+        val friend = friends != null && friends.isFriend(fromPeerID)
+        val member = MoshCodec.isGroupType(payload.type) && groupMember?.invoke(fromPeerID) == true
+        if (!friend && !member) return false
         val decoded = MoshCodec.decode(payload) ?: return false
         sink?.invoke(fromPeerID, decoded)
         return true

@@ -20,6 +20,9 @@ object VerificationService {
 
     private var encryptionServiceRef: WeakReference<EncryptionService>? = null
 
+    /** MoshGrid: this phone's Noise static public key, lowercase hex. Null before the mesh service starts. */
+    fun myNoiseKeyHex(): String? = encryptionServiceRef?.get()?.getStaticPublicKey()?.joinToString("") { "%02x".format(it) }
+
     fun configure(encryptionService: EncryptionService) {
         this.encryptionServiceRef = WeakReference(encryptionService)
     }

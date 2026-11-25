@@ -159,6 +159,9 @@ private data class ChatRow(
     val status: DeliveryStatus?,
     val at: Long,
     val unread: Int,
+    /** A group chat: [peerID] holds the group id. */
+    val isGroup: Boolean = false,
+    val sender: String? = null,
 )
 
 /** Home: MoshGrid title, network button, ⋮ menu, search, one row per friend, and the add-friend button. */
@@ -170,6 +173,8 @@ fun ChatsHome(
     onNetwork: () -> Unit,
     onFriends: () -> Unit,
     onSettings: () -> Unit,
+    onOpenGroup: (String) -> Unit = {},
+    onNewGroup: () -> Unit = {},
     banners: @Composable () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
@@ -179,7 +184,10 @@ fun ChatsHome(
     var query by remember { mutableStateOf("") }
     var menu by remember { mutableStateOf(false) }
 
-    val rows = remember(conversations, friends) { buildRows(friends, conversations) }
+    val groups by com.bitchat.android.mosh.MoshGroups.store.groups.collectAsState()
+    val rows = remember(conversations, friends, groups) {
+        (buildRows(friends, conversations) + groupRows(groups)).sortedWith(compareByDescending<ChatRow> { it.at }.thenBy { it.name.lowercase() })
+    }
     var chip by remember { mutableStateOf(0) }
     val locations by MoshRuntime.store.locations.collectAsState()
     val me by MoshRuntime.myLocation.collectAsState()
@@ -189,7 +197,7 @@ fun ChatsHome(
         return System.currentTimeMillis() - l.takenAtMs < 600_000 && com.bitchat.android.mosh.distanceM(m.lat, m.lon, l.lat, l.lon) <= 200
     }
     val shown = rows.filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
-        .filter { when (chip) { 1 -> it.unread > 0; 2 -> isClose(it.peerID); else -> true } }
+        .filter { when (chip) { 1 -> it.unread > 0; 2 -> !it.isGroup && isClose(it.peerID); 3 -> it.isGroup; else -> true } }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
@@ -206,6 +214,7 @@ fun ChatsHome(
                             Icon(Icons.Filled.MoreVert, contentDescription = "More options")
                         }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text("New group") }, onClick = { menu = false; onNewGroup() })
                             DropdownMenuItem(text = { Text("Add a friend") }, onClick = { menu = false; onAddFriend() })
                             DropdownMenuItem(text = { Text("Friends") }, onClick = { menu = false; onFriends() })
                             DropdownMenuItem(text = { Text("Network") }, onClick = { menu = false; onNetwork() })
@@ -233,7 +242,7 @@ fun ChatsHome(
             if (rows.isNotEmpty()) {
                 item {
                     Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("All", "Unread", "Close by").forEachIndexed { i, label ->
+                        listOf("All", "Unread", "Close by", "Groups").forEachIndexed { i, label ->
                             val on = chip == i
                             Box(Modifier.height(40.dp).clip(RoundedCornerShape(20.dp))
                                 .background(if (on) cs.primary.copy(alpha = 0.16f) else cs.surface)
@@ -245,12 +254,15 @@ fun ChatsHome(
                     }
                 }
             }
-            items(shown, key = { it.peerID }) { r -> ChatRowItem(r) { onOpenChat(r.peerID) } }
+            items(shown, key = { (if (it.isGroup) "g:" else "p:") + it.peerID }) { r ->
+                ChatRowItem(r) { if (r.isGroup) onOpenGroup(r.peerID) else onOpenChat(r.peerID) }
+            }
             if (rows.isNotEmpty() && shown.isEmpty()) {
                 item {
                     Text(when {
                         query.isNotBlank() -> "No chats match \"$query\""
                         chip == 1 -> "No unread messages."
+                        chip == 3 -> "No groups yet. Make one from ⋮ → New group."
                         else -> "Nobody within 200 m right now."
                     }, color = cs.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(32.dp))
@@ -296,12 +308,38 @@ private fun buildRows(friends: List<com.bitchat.android.mosh.Friend>, conversati
     return rows.sortedWith(compareByDescending<ChatRow> { it.at }.thenBy { it.name.lowercase() })
 }
 
+private fun groupRows(groups: List<com.bitchat.android.mosh.Group>): List<ChatRow> {
+    val me = com.bitchat.android.mosh.MoshGroups.myKeyHex()
+    return groups.map { g ->
+        val last = g.messages.lastOrNull { it.kind == com.bitchat.android.mosh.GroupMessage.TEXT }
+        val mine = last != null && last.fromKeyHex == me
+        val who = last?.let { m -> if (mine) "You" else g.roster.members.firstOrNull { it.noiseKeyHex == m.fromKeyHex }?.name ?: "Someone" }
+        val status = if (mine) when (com.bitchat.android.mosh.overallDelivery(last!!.status)) {
+            com.bitchat.android.mosh.GroupDelivery.READ -> DeliveryStatus.Read("group", Date(last.sentAtMs))
+            com.bitchat.android.mosh.GroupDelivery.DELIVERED -> DeliveryStatus.Delivered("group", Date(last.sentAtMs))
+            com.bitchat.android.mosh.GroupDelivery.SENT -> DeliveryStatus.Sent
+            com.bitchat.android.mosh.GroupDelivery.WAITING -> DeliveryStatus.Sending
+        } else null
+        ChatRow(g.id, g.id, g.roster.name, mutual = !g.closed, preview = last?.text, outgoing = mine, status = status,
+            at = g.lastAtMs, unread = g.unread, isGroup = true, sender = who)
+    }
+}
+
+/** Square-ish avatar for a group, so groups and people are told apart at a glance. */
+@Composable
+fun GroupAvatar(name: String, key: String, size: androidx.compose.ui.unit.Dp = 52.dp) {
+    val initials = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2).joinToString("") { it.first().uppercase() }.ifEmpty { "#" }
+    Box(Modifier.size(size).clip(RoundedCornerShape(size * 0.3f)).background(avatarColor(key)), contentAlignment = Alignment.Center) {
+        Text(initials, color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = (size.value * 0.3f).sp)
+    }
+}
+
 @Composable
 private fun ChatRowItem(r: ChatRow, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        MoshAvatar(r.name, r.peerID, 52.dp)
+        if (r.isGroup) GroupAvatar(r.name, r.peerID) else MoshAvatar(r.name, r.peerID, 52.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(r.name, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -313,11 +351,13 @@ private fun ChatRowItem(r: ChatRow, onClick: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (r.outgoing && r.status != null) StatusIcon(r.status)
                 val text = when {
+                    r.isGroup && r.preview == null -> if (r.mutual) "Group made. Say hi." else "You're no longer in this group"
+                    r.isGroup -> "${r.sender}: ${r.preview}"
                     r.preview == null -> if (r.mutual) "Say hi" else "Waiting for them to scan you"
                     r.outgoing -> "You: ${r.preview}"
                     else -> r.preview
                 }
-                Text(text, fontSize = 15.sp, color = if (r.preview == null && !r.mutual) MoshColors.Amber else cs.onSurfaceVariant,
+                Text(text, fontSize = 15.sp, color = if (r.preview == null && !r.mutual && !r.isGroup) MoshColors.Amber else cs.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (r.unread > 0) {
                     Box(Modifier.heightIn(min = 22.dp).widthIn(min = 22.dp).clip(RoundedCornerShape(11.dp)).background(cs.secondary)

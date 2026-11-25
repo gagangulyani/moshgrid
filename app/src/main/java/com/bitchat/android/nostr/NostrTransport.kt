@@ -257,13 +257,14 @@ class NostrTransport(
      * key or our own identity is not known yet, so the caller never reports an internet send that
      * could not happen. True means handed to the relay queue (delivered once a relay is reachable).
      */
-    fun sendMoshPayload(payload: com.bitchat.android.model.NoisePayload, to: String): Boolean {
+    fun sendMoshPayload(payload: com.bitchat.android.model.NoisePayload, to: String, nostrKey: String? = null): Boolean {
         // Only the cheap key lookup runs on the caller's thread (often the main thread, at the moment
         // Help is raised). Our own identity needs the Keystore, so it is loaded in the coroutine.
-        if (resolveNostrPublicKey(to) == null) return false
+        // [nostrKey]: a group member who is not a friend, whose key came with the group's roster.
+        if ((nostrKey ?: resolveNostrPublicKey(to)) == null) return false
         transportScope.launch {
             try {
-                val recipientNostrPubkey = resolveNostrPublicKey(to) ?: return@launch
+                val recipientNostrPubkey = nostrKey ?: resolveNostrPublicKey(to) ?: return@launch
                 val senderIdentity = NostrIdentityBridge.getCurrentNostrIdentity(context) ?: return@launch
                 val recipientHex = ContactIdentityResolver.nostrPubkeyHex(recipientNostrPubkey) ?: return@launch
                 val content = NostrEmbeddedBitChat.encodeMoshPayloadForNostr(payload, to, senderPeerID) ?: return@launch

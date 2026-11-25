@@ -58,11 +58,24 @@ object MoshRuntime {
         )
         MoshNetworkGate.apply(app, prefs)
         MoshInbox.friends = friends
+        MoshGroups.init(app, helpPrefs)
+        MoshGroups.transport = { p, peer, member, allowNet ->
+            val encoded = MoshCodec.encode(p)
+            val mesh = prefs.bluetooth && MeshServiceHolder.getUnifiedOrCreate(app).sendMoshPayload(encoded, peer)
+            // Messages and rosters also go over the internet (a Bluetooth send has no delivery proof);
+            // receipts only when Bluetooth could not take them, to keep relay traffic down.
+            val wantNet = allowNet && nostrAllowed(prefs) && (p !is GroupReceipt || !mesh)
+            val net = wantNet && NostrTransport.getInstance(app).sendMoshPayload(encoded, member.noiseKeyHex, member.nostrPubHex.ifEmpty { null })
+            mesh to net
+        }
         MoshInbox.sink = { from, p ->
-            // The notifier acts on what the store decided: a replayed, late or cancelled alert never rings.
-            val change = store.apply(from, p)
-            HelpNotifier.onChange(app, from, change, store.activeHelp.value[from])
-            onReceived?.invoke(app, from, p)
+            if (p is GroupRoster || p is GroupMessage || p is GroupReceipt) MoshGroups.onReceived(app, from, p)
+            else {
+                // The notifier acts on what the store decided: a replayed, late or cancelled alert never rings.
+                val change = store.apply(from, p)
+                HelpNotifier.onChange(app, from, change, store.activeHelp.value[from])
+                onReceived?.invoke(app, from, p)
+            }
         }
     }
 
@@ -129,6 +142,7 @@ object MoshRuntime {
         val app = context.applicationContext
         if (isInitialised) {
             help.wipe()
+            MoshGroups.wipe()
             HelpNotifier.cancel(app, store.activeHelp.value.keys)
             store.wipe()
             prefs.clear()

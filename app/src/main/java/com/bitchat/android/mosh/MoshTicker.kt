@@ -30,6 +30,7 @@ class MoshTicker(private val context: Context, private val scope: CoroutineScope
                 // A failure in one tick must not end the loop: Help repeats depend on it.
                 runCatching { MoshRuntime.help.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
                 runCatching { MoshRuntime.meeting.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
+                runCatching { MoshGroups.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
                 val btOn = bluetoothOn()
                 if (btWasOn && !btOn) MoshMonitor.event(context, "bt_off")
                 btWasOn = btOn

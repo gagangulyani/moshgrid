@@ -247,9 +247,15 @@ class NostrDirectMessageHandler(
             NoisePayloadType.LOCATION,
             NoisePayloadType.MEETING_POINT,
             NoisePayloadType.HELP,
-            NoisePayloadType.HELP_CANCEL -> {
+            NoisePayloadType.HELP_CANCEL,
+            NoisePayloadType.GROUP_ROSTER,
+            NoisePayloadType.GROUP_MESSAGE,
+            NoisePayloadType.GROUP_RECEIPT -> {
                 // MoshGrid: map the Nostr sender back to their mesh peer ID, then friend-gate.
+                // Group members who are not friends are found by the Nostr key their group's creator gave us.
                 val noiseKey = com.bitchat.android.favorites.FavoritesPersistenceService.shared.findNoiseKey(senderPubkey)
+                    ?: if (com.bitchat.android.mosh.MoshCodec.isGroupType(payload.type))
+                        com.bitchat.android.mosh.MoshGroups.noiseKeyForNostr(senderPubkey) else null
                 val peerID = noiseKey?.let { com.bitchat.android.noise.NoisePeerIdentity.derivePeerID(it) } ?: return
                 com.bitchat.android.mosh.MoshInbox.receive(peerID, payload)
             }

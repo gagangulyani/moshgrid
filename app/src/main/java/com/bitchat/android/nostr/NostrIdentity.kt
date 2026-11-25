@@ -102,6 +102,7 @@ object NostrIdentityBridge {
     
     // Cache for derived geohash identities to avoid repeated crypto operations
     private val geohashIdentityCache = ConcurrentHashMap<String, NostrIdentity>()
+    @Volatile private var currentIdentityCache: NostrIdentity? = null
     
     /**
      * Get or create the current Nostr identity
@@ -112,8 +113,10 @@ object NostrIdentityBridge {
         // Try to load existing Nostr private key
         val existingKey = loadNostrPrivateKey(stateManager)
         if (existingKey != null) {
+            // Deriving the public key costs tens of milliseconds (seconds on a cold, slow phone): reuse it.
+            currentIdentityCache?.takeIf { it.privateKeyHex == existingKey }?.let { return it }
             return try {
-                NostrIdentity.fromPrivateKey(existingKey)
+                NostrIdentity.fromPrivateKey(existingKey).also { currentIdentityCache = it }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create identity from stored key: ${e.message}")
                 null
@@ -211,6 +214,7 @@ object NostrIdentityBridge {
         
         // Clear cache first
         geohashIdentityCache.clear()
+        currentIdentityCache = null
         
         // Clear Nostr private key using public methods instead of reflection
         return try {
