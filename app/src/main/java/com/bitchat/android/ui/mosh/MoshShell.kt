@@ -265,7 +265,7 @@ private fun YouScreen(
                     "Internet " + if (prefs.internet) "on" else "off",
                 ).joinToString(" · "), Icons.Outlined.SignalCellularAlt, onNetwork)
                 MoshActionRow("Crash reports", if (prefs.monitoringOptIn) "On" else "Off", Icons.Outlined.BugReport, onProblems)
-                MoshActionRow("About", "How MoshGrid works · open source", Icons.Outlined.Info, onAbout)
+                MoshActionRow("About", "Version ${appVersion(LocalContext.current)} · open source", Icons.Outlined.Info, onAbout)
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -323,15 +323,21 @@ private fun ProblemsPage() {
     }
 }
 
+/** The version people see, e.g. "1.1.0" (the build's "-moshgrid" suffix is for Android, not for reading). */
+private fun appVersion(context: android.content.Context): String =
+    runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
+        ?.removeSuffix("-moshgrid") ?: ""
+
 /** Version, how it works in three lines, and the licence. */
 @Composable
 private fun AboutPage() {
     val context = LocalContext.current
-    val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "" }
+    val version = remember { appVersion(context) }
     val cs = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("MoshGrid $version", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+        Text("MoshGrid", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+        Text("Version $version", fontSize = 15.sp, color = cs.onSurfaceVariant)
         listOf(
             "Phones pass messages to each other over Bluetooth, so it works with no signal.",
             "With signal, messages also go over the internet to friends out of range.",

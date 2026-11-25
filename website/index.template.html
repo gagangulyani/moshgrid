@@ -81,6 +81,7 @@ h1 .l2{display:block;color:transparent;-webkit-text-stroke:1.5px var(--white)}
 .pill-lg{background:var(--acid);color:var(--black);padding:1.05rem 1.7rem;font-size:1.1rem}
 .pill-lg:hover{color:var(--black);box-shadow:0 0 0 6px rgba(198,255,61,.3),0 0 40px rgba(198,255,61,.35)}
 .pill-lg small{font-weight:400;opacity:.65;font-size:.9rem}
+@media (max-width:600px){.pill-lg .v{display:none}}
 .cta .alt{font-family:var(--mono);font-size:.95rem;color:var(--grey)}
 .cta .alt:hover{color:var(--white)}
 .facts{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:2.2rem;padding:0;list-style:none}
@@ -363,7 +364,7 @@ footer p{max-width:none;margin:0}
         <h1><span class="w" style="--i:0">Find</span> <span class="w" style="--i:1">your</span> <span class="w" style="--i:2">friends</span><span class="l2"><span class="w" style="--i:3">in</span> <span class="w" style="--i:4">the</span> <span class="w" style="--i:5">crowd.</span></span></h1>
         <p class="lede intro" style="--i:6">When thousands of phones choke the network at a gig, MoshGrid phones talk to each other over Bluetooth. See where your friends are, message them, and call for help with one press.</p>
         <div class="cta intro" style="--i:7">
-          <a class="pill pill-lg shine" href="downloads/{{APK_ARM}}" download>Download for Android <small>{{SIZE_ARM}}</small></a>
+          <a class="pill pill-lg shine" href="downloads/{{APK_ARM}}" download>Download for Android <small><span class="v">v{{VERSION}} · </span>{{SIZE_ARM}}</small></a>
           <a class="alt" href="#install">How to install</a>
         </div>
         <ul class="facts intro" style="--i:8" aria-label="At a glance">
@@ -501,7 +502,7 @@ footer p{max-width:none;margin:0}
         <div>
           <h2 data-r>Lose the signal. Not your friends.</h2>
           <p class="sub" data-r>Free for Android. Set it up with your friends before the show.</p>
-          <div class="cta" data-r><a class="pill pill-lg shine" href="downloads/{{APK_ARM}}" download>Download for Android <small>{{SIZE_ARM}}</small></a></div>
+          <div class="cta" data-r><a class="pill pill-lg shine" href="downloads/{{APK_ARM}}" download>Download for Android <small><span class="v">v{{VERSION}} · </span>{{SIZE_ARM}}</small></a></div>
         </div>
         <div class="poi-wrap" data-r="scale" aria-hidden="true">
           <svg class="final-poi" viewBox="18 18 72 72">
@@ -518,7 +519,7 @@ footer p{max-width:none;margin:0}
   </main>
 
   <footer>
-    <p><a href="https://github.com/gagangulyani/moshgrid">Source on GitHub</a>. No trackers, no cookies, no analytics on this page. Fonts: Geist Mono and Atkinson Hyperlegible, both under the SIL Open Font License, served from this site. Map data in the app is © OpenStreetMap contributors.</p>
+    <p>MoshGrid v{{VERSION}}. <a href="https://github.com/gagangulyani/moshgrid">Source on GitHub</a>. No trackers, no cookies, no analytics on this page. Fonts: Geist Mono and Atkinson Hyperlegible, both under the SIL Open Font License, served from this site. Map data in the app is © OpenStreetMap contributors.</p>
   </footer>
 </div>
 
