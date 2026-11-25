@@ -261,7 +261,7 @@ private fun NameStep(name: String, onName: (String) -> Unit, onDone: () -> Unit)
     StepTitle("What do your friends call you?", "They'll see it when you ask for help.")
     OutlinedTextField(
         value = name, onValueChange = onName, singleLine = true,
-        label = { Text("Your name") }, modifier = Modifier.fillMaxWidth(),
+        label = { Text("Your name") }, placeholder = { Text("e.g. Priya") }, modifier = Modifier.fillMaxWidth(),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focus.clearFocus(); onDone() }),
     )

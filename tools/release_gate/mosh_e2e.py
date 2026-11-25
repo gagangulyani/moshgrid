@@ -521,7 +521,7 @@ def sc_meeting_point_ui(r: Run):
     cx, cy = (mb[0][0] + mb[0][2]) // 2, (mb[0][1] + mb[0][3]) // 2
     a.sh(f"input swipe {cx} {cy} {cx} {cy} 1200")
     time.sleep(2)
-    a.tap("Name it (e.g. big tree by the bar)")
+    a.tap("Name it")
     a.sh("input text Gate9")
     time.sleep(1)
     a.tap("Set for all friends")

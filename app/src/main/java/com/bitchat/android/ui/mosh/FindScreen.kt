@@ -222,7 +222,9 @@ fun FindScreen(
         AlertDialog(
             onDismissRequest = { longPress = null },
             title = { Text("Set meeting point here?") },
-            text = { OutlinedTextField(value = label, onValueChange = { label = it.take(40) }, label = { Text("Name it (e.g. big tree by the bar)") }) },
+            text = { OutlinedTextField(value = label, onValueChange = { label = it.take(40) }, label = { Text("Name it") },
+                placeholder = { Text("e.g. Big tree by the bar") },
+                supportingText = { Text("Something everyone can spot. Left blank, it's called Meeting point.") }) },
             confirmButton = {
                 TextButton(onClick = {
                     MoshRuntime.setMeetingPoint(MeetingPoint(UUID.randomUUID().toString().take(12), at.latitude, at.longitude,
@@ -777,11 +779,14 @@ private fun FindingView(
                 val bearing = com.bitchat.android.mosh.bearingDeg(me.lat, me.lon, target.lat, target.lon)
                 val heading = compass.headingDeg
                 val rel = if (heading != null) bearing - heading else bearing
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+                // The arrow shrinks when banners (a friend's Help) take room, so distance and direction stay on screen.
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val arrowSize = (maxHeight - 210.dp).coerceIn(140.dp, 300.dp)
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally) {
-                    DotArrow(if (close) null else rel, color, dim = stale,
+                    DotArrow(if (close) null else rel, color, dim = stale, side = arrowSize,
                         description = if (close) "Close by" else "Arrow pointing ${directionWords(rel)}, ${metres(dist ?: 0.0)}")
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(12.dp))
                     if (g == Guidance.CloseLookAround) {
                         Text("Close", fontSize = 88.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 88.sp)
                     } else BigDistance(dist ?: 0.0, approx = stale)
@@ -818,6 +823,7 @@ private fun FindingView(
                         }
                     }
                 }
+                }
             }
         }
         if (locationOn && target != null) {
@@ -847,11 +853,11 @@ private fun PillButton(label: String, bg: Color, fg: Color, modifier: Modifier, 
 
 /** The 17 by 17 dot field; [relativeDeg] null lights only the centre (they are close). */
 @Composable
-private fun DotArrow(relativeDeg: Double?, color: Color, dim: Boolean, description: String) {
+private fun DotArrow(relativeDeg: Double?, color: Color, dim: Boolean, description: String, side: androidx.compose.ui.unit.Dp = 300.dp) {
     val dots = remember(relativeDeg?.let { Math.round(it / 2) }) { dotField(relativeDeg ?: 0.0) }
     val grey = Color(0xFF8A8A8A)
     val ink = MaterialTheme.colorScheme.onSurface
-    androidx.compose.foundation.Canvas(Modifier.padding(top = 12.dp).size(300.dp)
+    androidx.compose.foundation.Canvas(Modifier.padding(top = 12.dp).size(side)
         .semantics { contentDescription = description }) {
         val cell = size.width / 17
         dots.forEachIndexed { i, d ->
@@ -862,7 +868,7 @@ private fun DotArrow(relativeDeg: Double?, color: Color, dim: Boolean, descripti
                 relativeDeg != null && d.lit -> color to d.alpha * (if (dim) 0.4f else 1f)
                 else -> grey to 0.22f
             }
-            drawCircle(c.copy(alpha = a), radius = (if (d.centre) 7.dp else 4.5.dp).toPx(),
+            drawCircle(c.copy(alpha = a), radius = cell * (if (d.centre) 0.4f else 0.26f),
                 center = androidx.compose.ui.geometry.Offset(cx, cy))
         }
     }

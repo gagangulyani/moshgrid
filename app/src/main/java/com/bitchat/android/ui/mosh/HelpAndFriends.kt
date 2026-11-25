@@ -157,7 +157,10 @@ fun HelpScreen(onClose: () -> Unit) {
                 }
             }
             OutlinedTextField(value = note, onValueChange = { note = it.take(120) },
-                label = { Text("What to look for (optional)") }, shape = MoshShapes.Card, modifier = Modifier.fillMaxWidth())
+                label = { Text("What to look for (optional)") },
+                placeholder = { Text("e.g. Red cap, near the sound desk") },
+                supportingText = { Text("What you're wearing or a landmark, so friends spot you fast.") },
+                shape = MoshShapes.Card, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(12.dp))
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
                 .padding(horizontal = 16.dp, vertical = 14.dp)) {

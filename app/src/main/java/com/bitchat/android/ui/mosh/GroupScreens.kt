@@ -117,11 +117,13 @@ private fun BottomAction(label: String, enabled: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun NameField(value: String, placeholder: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun NameField(value: String, placeholder: String, onChange: (String) -> Unit, modifier: Modifier = Modifier,
+                      example: String = "e.g. Camp crew") {
     val cs = MaterialTheme.colorScheme
     Box(modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp)).background(cs.surface).padding(horizontal = 16.dp),
         contentAlignment = Alignment.CenterStart) {
-        if (value.isEmpty()) Text(placeholder, color = cs.onSurfaceVariant, fontSize = 17.sp)
+        if (value.isEmpty()) Text("$placeholder, $example", color = cs.onSurfaceVariant, fontSize = 17.sp, maxLines = 1,
+            overflow = TextOverflow.Ellipsis)
         BasicTextField(value, { v -> if (v.toByteArray().size <= 32) onChange(v) }, singleLine = true,
             textStyle = TextStyle(color = cs.onSurface, fontSize = 17.sp), cursorBrush = SolidColor(cs.primary),
             modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder })
