@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoshGrid: find your friends in the crowd</title>
+<meta name="description" content="A free Android app for finding and messaging your friends at gigs and festivals, even when the phone network dies.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="MoshGrid: find your friends in the crowd">
+<meta property="og:description" content="When the network dies at a gig, MoshGrid phones talk to each other over Bluetooth. Free for Android.">
+<link rel="icon" href="poi.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/geist_mono_bold.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+:root{
+  --black:#000; --ink:#0A0A0A; --acid:#C6FF3D; --magenta:#FF5CDB; --cyan:#3DF2FF; --red:#E8222B;
+  --grey:#9E9E9E; --white:#FFFFFF; --line:#232323;
+  --mono:'Geist Mono',ui-monospace,monospace;
+  --body:'Atkinson Hyperlegible',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{background:var(--black);color:var(--white);-webkit-text-size-adjust:100%;scroll-behavior:smooth;overflow-x:clip}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;font-family:var(--body);font-size:1.125rem;line-height:1.6;overflow-x:hidden}
+img{display:block;max-width:100%;height:auto}
+a{color:var(--acid);text-underline-offset:.22em}
+a:hover{color:var(--white)}
+:focus-visible{outline:3px solid var(--cyan);outline-offset:3px;border-radius:6px}
+.wrap{max-width:74rem;margin:0 auto;padding:0 1.5rem}
+h1,h2,h3,.mono{font-family:var(--mono)}
+
+/* nav */
+.top{display:flex;align-items:center;justify-content:space-between;padding:1.1rem 0}
+.brand{display:flex;align-items:center;gap:.55rem;font-family:var(--mono);font-weight:700;font-size:1.3rem;color:var(--white);text-decoration:none}
+.brand svg{width:2rem;height:2rem}
+.pill{display:inline-flex;align-items:center;gap:.6rem;font-family:var(--mono);font-weight:700;text-decoration:none;border-radius:999px;transition:transform .15s ease, box-shadow .2s ease}
+.pill:active{transform:scale(.97)}
+.pill-sm{background:var(--acid);color:var(--black);padding:.55rem 1.1rem;font-size:.95rem}
+.pill-sm:hover{color:var(--black);box-shadow:0 0 0 4px rgba(198,255,61,.35)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1.15fr .85fr;gap:2rem;align-items:center;padding:1.5rem 0 4.5rem;min-height:min(46rem,88vh)}
+h1{font-weight:700;font-size:clamp(2.5rem,5.4vw,4.5rem);line-height:.98;letter-spacing:-.045em;margin:0 0 1.5rem}
+h1 .l2{display:block;color:transparent;-webkit-text-stroke:1.5px var(--white)}
+.lede{font-size:1.28rem;color:#CFCFCF;max-width:31rem;margin:0 0 2.2rem}
+.cta{display:flex;flex-wrap:wrap;align-items:center;gap:1rem 1.6rem}
+.pill-lg{background:var(--acid);color:var(--black);padding:1.05rem 1.7rem;font-size:1.1rem}
+.pill-lg:hover{color:var(--black);box-shadow:0 0 0 6px rgba(198,255,61,.3),0 0 40px rgba(198,255,61,.35)}
+.pill-lg small{font-weight:400;opacity:.65;font-size:.9rem}
+.cta .alt{font-family:var(--mono);font-size:.95rem;color:var(--grey)}
+.cta .alt:hover{color:var(--white)}
+.facts{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:2.2rem;padding:0;list-style:none}
+.facts li{font-family:var(--mono);font-size:.85rem;color:var(--grey);border:1px solid var(--line);border-radius:999px;padding:.3rem .8rem}
+
+.stage{position:relative;justify-self:center;width:min(100%,30rem);aspect-ratio:1/1.12;display:grid;place-items:center}
+.stage .trail{position:absolute;inset:-8% -14%;width:128%;height:116%;overflow:visible}
+.trail path{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.trail .t1{stroke:var(--magenta);filter:drop-shadow(0 0 1.6px var(--magenta)) drop-shadow(0 0 5px rgba(255,92,219,.6))}
+.trail .t2{stroke:var(--cyan);filter:drop-shadow(0 0 1.6px var(--cyan)) drop-shadow(0 0 5px rgba(61,242,255,.6))}
+.trail .head{fill:var(--magenta);filter:drop-shadow(0 0 4px var(--magenta))}
+.phone{position:relative;width:15.5rem;border-radius:2.3rem;padding:.55rem;background:#161616;box-shadow:0 0 0 1px #2c2c2c,0 30px 80px rgba(0,0,0,.9),0 0 90px rgba(232,34,43,.22)}
+.phone img{border-radius:1.8rem;aspect-ratio:540/1130;object-fit:cover;object-position:top;width:100%}
+.chip{position:absolute;font-family:var(--mono);font-size:.82rem;font-weight:700;background:var(--ink);border:1px solid var(--line);border-radius:14px;padding:.55rem .8rem;display:flex;align-items:center;gap:.5rem;white-space:nowrap;box-shadow:0 12px 30px rgba(0,0,0,.6)}
+.chip i{width:.6rem;height:.6rem;border-radius:50%;display:inline-block}
+.chip-a{left:-6%;top:22%}
+.chip-a i{background:var(--red);box-shadow:0 0 0 4px rgba(232,34,43,.25)}
+.chip-b{right:-8%;bottom:20%}
+.chip-b i{background:var(--acid)}
+@media (prefers-reduced-motion:no-preference){
+  .trail path{stroke-dasharray:1000;stroke-dashoffset:1000;animation:draw 3.4s cubic-bezier(.55,.05,.25,1) .2s forwards}
+  .trail .t2{animation-delay:.55s}
+  .trail .head{opacity:0;animation:fade .5s ease 3.4s forwards}
+  .phone{opacity:0;transform:translateY(24px) rotate(-3deg);animation:rise .9s cubic-bezier(.2,.8,.2,1) .5s forwards}
+  .chip{opacity:0;animation:fade .5s ease forwards}
+  .chip-a{animation-delay:1.5s}.chip-b{animation-delay:2.1s}
+  .chip-a i{animation:beat 1.6s ease-in-out 2s infinite}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  @keyframes fade{to{opacity:1}}
+  @keyframes rise{to{opacity:1;transform:translateY(0) rotate(-3deg)}}
+  @keyframes beat{50%{box-shadow:0 0 0 9px rgba(232,34,43,0)}}
+}
+@media (prefers-reduced-motion:reduce){.phone{transform:rotate(-3deg)}}
+
+/* sections */
+section{padding:5rem 0}
+.rule{border-top:1px solid var(--line)}
+h2{font-weight:700;font-size:clamp(1.9rem,4.2vw,3.1rem);line-height:1.04;letter-spacing:-.035em;margin:0 0 1.2rem;max-width:20ch}
+h3{font-weight:700;font-size:1.15rem;line-height:1.25;margin:0 0 .45rem;letter-spacing:-.01em}
+p{margin:0 0 1rem;max-width:38rem}
+.sub{color:#BDBDBD;font-size:1.15rem;max-width:36rem}
+
+/* mesh */
+.mesh-head{display:grid;grid-template-columns:1fr auto;gap:2rem;align-items:end;margin-bottom:2rem}
+.mesh-box{position:relative;border:1px solid var(--line);border-radius:28px;overflow:hidden;background:radial-gradient(120% 90% at 50% 120%,#1a0b17 0%,#000 60%)}
+#mesh{display:block;width:100%;height:28rem}
+.mesh-cap{position:absolute;left:1.2rem;bottom:1.1rem;font-family:var(--mono);font-size:.92rem;background:rgba(0,0,0,.75);border:1px solid var(--line);border-radius:12px;padding:.5rem .8rem;min-height:2.4rem}
+.legend{display:flex;flex-wrap:wrap;gap:1rem 1.4rem;font-family:var(--mono);font-size:.85rem;color:var(--grey);margin:0;padding:0;list-style:none}
+.legend i{display:inline-block;width:.6rem;height:.6rem;border-radius:50%;margin-right:.45rem;vertical-align:.05em}
+.replay{font-family:var(--mono);font-size:.85rem;background:none;color:var(--grey);border:1px solid var(--line);border-radius:999px;padding:.45rem .9rem;cursor:pointer}
+.replay:hover{color:var(--white);border-color:var(--grey)}
+
+/* screens */
+.shots{display:grid;grid-template-columns:repeat(4,1fr);gap:1.6rem;margin-top:2.6rem}
+.shot figure{margin:0}
+.shot .frame{border-radius:1.6rem;padding:.4rem;background:#161616;box-shadow:0 0 0 1px #2a2a2a}
+.shot img{border-radius:1.3rem;aspect-ratio:540/1130;object-fit:cover;object-position:top;width:100%}
+.shot figcaption{margin-top:1rem;font-size:1rem;color:#BDBDBD;max-width:17rem}
+.shot figcaption b{display:block;font-family:var(--mono);color:var(--white);font-size:1rem;margin-bottom:.2rem}
+.shot:nth-child(even){margin-top:3rem}
+
+/* steps */
+.steps{list-style:none;margin:2.6rem 0 0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem;counter-reset:s}
+.steps li{counter-increment:s;border:1px solid var(--line);border-radius:22px;padding:1.6rem 1.5rem 1.5rem;background:var(--ink)}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:2.4rem;height:2.4rem;border-radius:50%;font-family:var(--mono);font-weight:700;color:var(--black);background:var(--acid);margin-bottom:1.1rem}
+.steps li:nth-child(2)::before{background:var(--cyan)}
+.steps li:nth-child(3)::before{background:var(--magenta)}
+.steps p{color:#BDBDBD;font-size:1.02rem;margin:0}
+
+/* features */
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:2.4rem 2.6rem;margin-top:2.6rem}
+.features svg{width:2.2rem;height:2.2rem;margin-bottom:.9rem}
+.features p{color:#BDBDBD;font-size:1.02rem;margin:0}
+
+/* install */
+.install{display:grid;grid-template-columns:1.2fr 1fr;gap:3rem;align-items:start;margin-top:2.2rem}
+.install ol{margin:0;padding-left:1.5rem}
+.install li{margin-bottom:1.05rem;padding-left:.35rem}
+.install li::marker{font-family:var(--mono);font-weight:700;color:var(--acid)}
+.check{border:1px solid var(--line);border-radius:20px;padding:1.4rem 1.5rem;font-size:.97rem;background:var(--ink)}
+.check h3{font-size:1rem}
+.check code{display:block;font-family:var(--mono);font-size:.74rem;word-break:break-all;color:#E6E6E6;margin:.3rem 0 1rem;line-height:1.5}
+.check p{color:var(--grey);margin:0 0 .25rem}
+
+.limits{list-style:none;padding:0;margin:2rem 0 0;max-width:46rem}
+.limits li{padding:1.05rem 0 1.05rem 1.6rem;border-bottom:1px solid var(--line);color:#BDBDBD;position:relative}
+.limits li::before{content:"";position:absolute;left:0;top:1.6rem;width:.55rem;height:.55rem;border-radius:50%;background:var(--grey)}
+.limits li strong{color:var(--white)}
+
+.source{display:grid;grid-template-columns:1.1fr 1fr;gap:3rem;align-items:start}
+.final{text-align:left;padding:5.5rem 0 4rem}
+.final h2{font-size:clamp(2.2rem,5.5vw,4rem);max-width:16ch}
+footer{border-top:1px solid var(--line);padding:2.2rem 0 3rem;color:var(--grey);font-size:.92rem}
+footer p{max-width:none;margin:0}
+
+@media (max-width:960px){
+  .hero{grid-template-columns:1fr;min-height:0;padding:1rem 0 4rem;gap:3rem}
+  .stage{width:min(100%,22rem)}
+  .phone{width:12.5rem}
+  .chip-a{left:-2%}
+  .chip-b{right:-2%}
+  .shots{grid-template-columns:repeat(4,15rem);overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:1rem;margin-right:-1.5rem;padding-right:1.5rem}
+  .shot{scroll-snap-align:start}
+  .shot:nth-child(even){margin-top:0}
+  .steps,.features,.install,.source,.mesh-head{grid-template-columns:1fr}
+  #mesh{height:22rem}
+  section{padding:4rem 0}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#" aria-label="MoshGrid home">
+      <svg viewBox="22 22 64 64" aria-hidden="true"><path d="{{P1}}" fill="none" stroke="#FF5CDB" stroke-width="3.2" stroke-linecap="round"/><path d="{{P2}}" fill="none" stroke="#3DF2FF" stroke-width="3.2" stroke-linecap="round"/><circle cx="81" cy="54" r="4.8" fill="#FF5CDB"/><circle cx="54" cy="54" r="3.7" fill="#fff"/></svg>
+      MoshGrid
+    </a>
+    <a class="pill pill-sm" href="#install">Get the app</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div>
+        <h1>Find your friends<span class="l2">in the crowd.</span></h1>
+        <p class="lede">When thousands of phones choke the network at a gig, MoshGrid phones talk to each other over Bluetooth. See where your friends are, message them, and call for help with one press.</p>
+        <div class="cta">
+          <a class="pill pill-lg" href="downloads/{{APK_ARM}}" download>Download for Android <small>{{SIZE_ARM}}</small></a>
+          <a class="alt" href="#install">How to install</a>
+        </div>
+        <ul class="facts" aria-label="At a glance">
+          <li>Free</li><li>No account</li><li>Works with no signal</li><li>Open source</li>
+        </ul>
+      </div>
+      <div class="stage">
+        <svg class="trail" viewBox="22 22 64 64" aria-hidden="true">
+          <path class="t1" pathLength="1000" transform="rotate(22 54 54)" d="{{P1}}"/>
+          <path class="t2" pathLength="1000" d="{{P2}}"/>
+          <circle class="head" cx="81.03" cy="54" r="2.6"/>
+        </svg>
+        <div class="phone"><img src="img/help_incoming.webp" width="540" height="1130" alt="MoshGrid on a friend's phone: Ben asked for help. Look for: red cap, near the sound desk. A red Help pin shows where he is."></div>
+        <div class="chip chip-a"><i></i>Ben asked for help</div>
+        <div class="chip chip-b"><i></i>343 m away, just now</div>
+      </div>
+    </div>
+
+    <section class="rule" aria-labelledby="mesh-h">
+      <div class="mesh-head">
+        <div>
+          <h2 id="mesh-h">No signal? The crowd is the network.</h2>
+          <p class="sub">Every MoshGrid phone passes messages along to the next one over Bluetooth. Your Help hops through the crowd until it reaches your friend, and goes over the internet too whenever there's any.</p>
+        </div>
+        <button class="replay" type="button" id="replay">Play again</button>
+      </div>
+      <div class="mesh-box">
+        <canvas id="mesh" aria-label="Animation: a Help message hops from phone to phone across a crowd until it reaches a friend."></canvas>
+        <div class="mesh-cap mono" id="meshcap" aria-live="polite"></div>
+      </div>
+      <ul class="legend" style="margin-top:1rem">
+        <li><i style="background:#3a3a3a"></i>People without the app</li>
+        <li><i style="background:var(--cyan)"></i>Phones with MoshGrid</li>
+        <li><i style="background:var(--red)"></i>Ben, asking for help</li>
+        <li><i style="background:var(--magenta)"></i>Ana, his friend</li>
+      </ul>
+    </section>
+
+    <section class="rule" aria-labelledby="screens-h">
+      <h2 id="screens-h">One press, and your friends know where you are.</h2>
+      <p class="sub">Real screens from the app. Help keeps resending until it gets through, and tells you plainly who it reached.</p>
+      <div class="shots">
+        <div class="shot"><figure><div class="frame"><img src="img/help_screen.webp" width="540" height="1130" loading="lazy" alt="The Ask for help screen with a large red HELP button and a note: red cap, near the sound desk."></div><figcaption><b>Hold Help for 3 seconds</b>Add what to look for, so friends can spot you.</figcaption></figure></div>
+        <div class="shot"><figure><div class="frame"><img src="img/help_sent.webp" width="540" height="1130" loading="lazy" alt="Help sent. Sent to Ana over Bluetooth and internet. Trying again every minute or two."></div><figcaption><b>It tells you who it reached</b>And keeps trying with your latest position.</figcaption></figure></div>
+        <div class="shot"><figure><div class="frame"><img src="img/help_incoming.webp" width="540" height="1130" loading="lazy" alt="Ana's phone showing Ben's Help alert and his position on the map."></div><figcaption><b>Your friend's phone rings</b>Even on silent, with your spot on the map.</figcaption></figure></div>
+        <div class="shot"><figure><div class="frame"><img src="img/friends.webp" width="540" height="1130" loading="lazy" alt="The Friends tab with a button to add a friend in person by QR code."></div><figcaption><b>Friends only</b>Add people in person by scanning QR codes.</figcaption></figure></div>
+      </div>
+    </section>
+
+    <section class="rule" aria-labelledby="how">
+      <h2 id="how">Set it up before the show. Use it when it counts.</h2>
+      <ol class="steps">
+        <li><h3>Add your friends</h3><p>Scan each other's QR code while you're together. Only people you've scanned can see you or message you.</p></li>
+        <li><h3>Go to the gig</h3><p>Keep the app running in your pocket. It shares your spot with friends and stays ready on Bluetooth.</p></li>
+        <li><h3>Find each other</h3><p>Open Find to see everyone on the map, drop a meeting point, or press Help.</p></li>
+      </ol>
+    </section>
+
+    <section class="rule" aria-labelledby="inside">
+      <h2 id="inside">Built for the moment the network gives up.</h2>
+      <div class="features">
+        <div><svg viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="#3DF2FF" stroke-width="2.2" stroke-linecap="round"><circle cx="6" cy="22" r="3"/><circle cx="16" cy="10" r="3"/><circle cx="26" cy="22" r="3"/><path d="M8.2 19.6 13.8 12.4M18.2 12.4l5.6 7.2M9 22h14"/></svg><h3>Works with no signal</h3><p>Messages hop from phone to phone over Bluetooth, so the crowd itself carries them.</p></div>
+        <div><svg viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="#E8222B" stroke-width="2.2" stroke-linecap="round"><circle cx="16" cy="16" r="5" fill="#E8222B"/><circle cx="16" cy="16" r="10.5"/><path d="M16 1.5v3M16 27.5v3"/></svg><h3>A Help button that keeps trying</h3><p>Sends your location to all your friends and resends until it gets through.</p></div>
+        <div><svg viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="#FF5CDB" stroke-width="2.2" stroke-linecap="round"><path d="M16 29s-9-8.4-9-15a9 9 0 0 1 18 0c0 6.6-9 15-9 15Z"/><circle cx="16" cy="14" r="3.2"/></svg><h3>Friends on a map</h3><p>See where each friend was last seen and how long ago, with offline venue maps.</p></div>
+        <div><svg viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="#C6FF3D" stroke-width="2.2" stroke-linecap="round"><path d="M8 29V4M8 5h16l-4 5 4 5H8"/></svg><h3>One meeting point</h3><p>Drop a pin where everyone regroups. It reaches friends who were out of range.</p></div>
+        <div><svg viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="#3DF2FF" stroke-width="2.2" stroke-linecap="round"><rect x="7" y="14" width="18" height="14" rx="3"/><path d="M11 14V9a5 5 0 0 1 10 0v5"/></svg><h3>Private by design</h3><p>No account, no phone number, no ads. End-to-end encrypted, friends only.</p></div>
+        <div><svg viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="#C6FF3D" stroke-width="2.2" stroke-linecap="round"><path d="m4 17 6 6L22 9"/><path d="m14 21 2 2L28 9"/></svg><h3>Honest about delivery</h3><p>Shows who each message reached and how, and says so when nobody is in range.</p></div>
+      </div>
+    </section>
+
+    <section class="rule" id="install" aria-labelledby="install-h">
+      <h2 id="install-h">Install it on Android</h2>
+      <div class="install">
+        <ol>
+          <li><a href="downloads/{{APK_ARM}}" download>Download MoshGrid</a> ({{SIZE_ARM}}). It runs on nearly every Android phone from the last eight years. If it won't install, get the <a href="downloads/{{APK_UNI}}" download>version for all phones</a> ({{SIZE_UNI}}).</li>
+          <li>Open the file. Android asks you to allow installs from your browser or Files app: allow it for this install.</li>
+          <li>Open MoshGrid, enter your name, and allow Bluetooth, location and notifications. It needs all three to find friends and to alert you.</li>
+          <li>Meet your friends and scan each other's QR codes, before the show, while you're standing together.</li>
+        </ol>
+        <div class="check">
+          <h3>Check your download</h3>
+          <p>Version {{VERSION}}, for Android 8 and newer. Compare the SHA-256 of the file you downloaded:</p>
+          <code>{{APK_ARM}}<br>{{SHA_ARM}}</code>
+          <code>{{APK_UNI}}<br>{{SHA_UNI}}</code>
+          <p>Signing certificate SHA-256:</p>
+          <code>{{CERT_SHA}}</code>
+        </div>
+      </div>
+    </section>
+
+    <section class="rule" aria-labelledby="limits">
+      <h2 id="limits">Good to know before you rely on it</h2>
+      <ul class="limits">
+        <li><strong>Android only for now.</strong> Friends on iPhone can't join yet.</li>
+        <li><strong>Bluetooth has a short reach.</strong> Roughly across a large room between two phones. Messages go further when other MoshGrid phones are in between.</li>
+        <li><strong>Everyone sets it up before the gig.</strong> You can only reach friends who installed the app and scanned your code.</li>
+        <li><strong>Over the internet, a relay server passes messages on.</strong> It can't read them, but like any server it sees your phone's IP address.</li>
+        <li><strong>It is not an emergency service.</strong> In danger, find venue staff or call 112.</li>
+      </ul>
+    </section>
+
+    <section class="rule" aria-labelledby="open">
+      <div class="source">
+        <div>
+          <h2 id="open">Free and open source</h2>
+          <p class="sub">MoshGrid is free software under the GNU General Public License v3. It's built on <a href="https://github.com/permissionlesstech/bitchat-android">bitchat-android</a>, the open-source Bluetooth mesh chat, with friend finding, Help and venue maps added on top.</p>
+        </div>
+        <div class="check">
+          <h3>Source code</h3>
+          <p>The complete source for this version, with build instructions and the licence.</p>
+          <p style="margin-top:.8rem"><a href="downloads/{{SRC_ZIP}}" download>Download the source</a> ({{SIZE_SRC}})</p>
+          <p><a href="https://www.gnu.org/licenses/gpl-3.0.html">Read the GPL v3</a></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="rule final">
+      <h2>Lose the signal. Not your friends.</h2>
+      <div class="cta"><a class="pill pill-lg" href="downloads/{{APK_ARM}}" download>Download for Android <small>{{SIZE_ARM}}</small></a></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>No trackers, no cookies, no analytics on this page. Fonts: Geist Mono and Atkinson Hyperlegible, both under the SIL Open Font License, served from this site. Map data in the app is © OpenStreetMap contributors.</p>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('mesh'), cap = document.getElementById('meshcap');
+  const ctx = cv.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const C = {crowd:'#2e2e2e', node:'#3DF2FF', red:'#E8222B', mag:'#FF5CDB', acid:'#C6FF3D'};
+  let W, H, dpr, crowd, nodes, ben, ana, path, t0, raf, visible = false, done = false;
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function size() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function layout() {
+    const n = Math.round(W * H / 900);
+    crowd = Array.from({length: n}, () => ({x: rand(0, W), y: rand(0, H), p: rand(0, 6.28)}));
+    const range = Math.max(110, W / 6.5);
+    // a chain of app phones from Ben (left) to Ana (right), plus a few strays
+    ben = {x: W * .07, y: rand(H * .3, H * .7)};
+    ana = {x: W * .93, y: rand(H * .3, H * .7)};
+    nodes = [];
+    let cur = ben;
+    while (Math.hypot(ana.x - cur.x, ana.y - cur.y) > range * .9) {
+      const ang = Math.atan2(ana.y - cur.y, ana.x - cur.x) + rand(-.6, .6);
+      const d = rand(range * .55, range * .85);
+      cur = {x: Math.min(W - 20, Math.max(20, cur.x + Math.cos(ang) * d)), y: Math.min(H - 30, Math.max(30, cur.y + Math.sin(ang) * d))};
+      nodes.push(cur);
+    }
+    path = [ben, ...nodes, ana];
+    for (let i = 0; i < Math.round(W / 90); i++) nodes.push({x: rand(20, W - 20), y: rand(30, H - 30), stray: true});
+  }
+  const HOP = 650;
+  function msg(s) { if (cap.textContent !== s) cap.textContent = s; }
+  function dot(x, y, r, c, glow) {
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283);
+    ctx.fillStyle = c; ctx.shadowColor = c; ctx.shadowBlur = glow || 0; ctx.fill(); ctx.shadowBlur = 0;
+  }
+  function frame(now) {
+    const t = reduce ? Infinity : now - t0;
+    ctx.clearRect(0, 0, W, H);
+    const wob = reduce ? 0 : now / 900;
+    for (const c of crowd) dot(c.x + Math.sin(wob + c.p) * 1.2, c.y + Math.cos(wob * .8 + c.p) * 1.2, 2, C.crowd);
+    for (const nd of nodes) dot(nd.x, nd.y, 3.4, C.node, 8);
+    const hops = path.length - 1, start = 900;
+    const prog = Math.max(0, (t - start) / HOP);
+    ctx.lineWidth = 2; ctx.lineCap = 'round';
+    for (let i = 0; i < hops; i++) {
+      const f = Math.min(1, Math.max(0, prog - i));
+      if (f <= 0) break;
+      const a = path[i], b = path[i + 1];
+      ctx.strokeStyle = C.red; ctx.shadowColor = C.red; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f); ctx.stroke();
+      ctx.shadowBlur = 0;
+      if (f < 1) dot(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f, 4, '#fff', 14);
+      else if (i < hops - 1) {
+        const age = (prog - i - 1) * HOP;
+        if (age < 500) { ctx.strokeStyle = `rgba(61,242,255,${1 - age / 500})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(b.x, b.y, 4 + age / 18, 0, 6.283); ctx.stroke(); ctx.lineWidth = 2; }
+      }
+    }
+    // Ben
+    const pulse = reduce ? 0 : (now % 1400) / 1400;
+    ctx.strokeStyle = `rgba(232,34,43,${1 - pulse})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(ben.x, ben.y, 8 + pulse * 26, 0, 6.283); ctx.stroke();
+    dot(ben.x, ben.y, 7, C.red, 16);
+    label('Ben', ben.x, ben.y);
+    // Ana
+    const arrived = prog >= hops;
+    if (arrived) {
+      const age = reduce ? 2000 : (prog - hops) * HOP;
+      for (let k = 0; k < 3; k++) {
+        const ph = ((age / 1000) + k / 3) % 1;
+        ctx.strokeStyle = `rgba(255,92,219,${1 - ph})`; ctx.beginPath(); ctx.arc(ana.x, ana.y, 8 + ph * 34, 0, 6.283); ctx.stroke();
+      }
+    }
+    dot(ana.x, ana.y, 7, C.mag, arrived ? 22 : 10);
+    label('Ana', ana.x, ana.y);
+    if (t < start) msg('Ben presses Help. No phone signal here.');
+    else if (!arrived) msg(`Hop ${Math.min(hops, Math.floor(prog) + 1)} of ${hops}: phone to phone over Bluetooth`);
+    else msg(`Ana's phone rings. Help reached her in ${hops} hops.`);
+    if (reduce) return;
+    if (arrived && (prog - hops) * HOP > 5200) { restart(); return; }
+    if (visible) raf = requestAnimationFrame(frame);
+  }
+  function label(s, x, y) {
+    ctx.font = '700 13px "Geist Mono", monospace'; ctx.fillStyle = '#fff';
+    ctx.textAlign = x > W / 2 ? 'right' : 'left';
+    ctx.fillText(s, x + (x > W / 2 ? -14 : 14), y - 12);
+  }
+  function restart() { layout(); t0 = performance.now(); if (visible) raf = requestAnimationFrame(frame); }
+  function init() { size(); layout(); t0 = performance.now(); requestAnimationFrame(frame); }
+  new IntersectionObserver(([e]) => {
+    visible = e.isIntersecting;
+    if (visible && !reduce) { cancelAnimationFrame(raf); if (!done) { done = true; t0 = performance.now(); } raf = requestAnimationFrame(frame); }
+  }, {threshold: .25}).observe(cv);
+  document.getElementById('replay').addEventListener('click', () => { cancelAnimationFrame(raf); layout(); t0 = performance.now(); raf = requestAnimationFrame(frame); });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { size(); layout(); if (reduce) requestAnimationFrame(frame); }, 150); });
+  document.fonts.ready.then(init);
+})();
+</script>
+</body>
+</html>

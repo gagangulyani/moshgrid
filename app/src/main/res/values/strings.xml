@@ -182,7 +182,7 @@
 
   <!-- About sheet: feature list -->
   <string name="about_no_tracking_title">No Tracking</string>
-  <string name="about_no_tracking_desc">No servers, accounts, or data collection.</string>
+  <string name="about_no_tracking_desc">No accounts, ads or data collection. Relays only pass on encrypted messages.</string>
   <string name="about_ephemeral_title">Ephemeral Identity</string>
   <string name="about_ephemeral_desc">A new peer ID is generated regularly.</string>
   <string name="about_panic_desc">Triple-tap the logo to instantly clear all data.</string>
@@ -533,7 +533,7 @@
   <!-- Onboarding screens -->
   <string name="location_services_required">Location Services Required</string>
   <string name="privacy_first">Privacy First</string>
-  <string name="location_explanation">MoshGrid shares your location only with friends you added in person, and only while sharing is on. It is never sent to a MoshGrid server.\n\nLocation is also required by Android for Bluetooth scanning.</string>
+  <string name="location_explanation">MoshGrid shares your location only with friends you added in person, and only while sharing is on. Over the internet it travels end-to-end encrypted through a relay server that cannot read it.\n\nLocation is also required by Android for Bluetooth scanning.</string>
   <string name="location_needs_for">MoshGrid needs location services for:</string>
   <string name="location_needs_bullets">• Bluetooth device scanning\n• Discovering nearby users on mesh network\n• Geohash chat feature\n• No tracking or location collection</string>
   <string name="background_location_required_title">Background Location Recommended</string>
@@ -574,7 +574,7 @@
   <string name="try_again">Try Again</string>
   <string name="open_settings">Open Settings</string>
   <string name="privacy_protected">Your Privacy is Protected</string>
-  <string name="privacy_bullets">• Your location goes only to friends you add in person\n• Bluetooth works with no signal\n• Nothing is stored on a MoshGrid server</string>
+  <string name="privacy_bullets">• Your location goes only to friends you add in person\n• Bluetooth works with no signal\n• Over the internet, a relay passes on encrypted messages it cannot read</string>
   <string name="permissions_header">Permissions</string>
   <string name="grant_permissions">Grant Permissions</string>
   <string name="location_tracking_warning">MoshGrid shares your location only with friends you add in person</string>
