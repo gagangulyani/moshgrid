@@ -8,19 +8,25 @@ At a big gig, thousands of phones choke the network and your group scatters. Mos
 
 <table>
   <tr>
-    <td><img src="website/img/friends.webp" alt="Friends tab listing friends and how recently each one was seen" width="200"/></td>
-    <td><img src="website/img/help_screen.webp" alt="Ask for help screen with a large Help button to hold for three seconds" width="200"/></td>
-    <td><img src="website/img/help_sent.webp" alt="Help sent screen saying which friends it reached and that it keeps retrying" width="200"/></td>
-    <td><img src="website/img/help_incoming.webp" alt="A friend's incoming Help alert with what to look for" width="200"/></td>
+    <td><img src="website/img/help_hold.webp" alt="Ask for help: hold the red button for three seconds, with a note: red cap, near the sound desk" width="200"/></td>
+    <td><img src="website/img/help_alert.webp" alt="A friend's phone after a Help alert: a dotted arrow and the distance counting down as they walk to you" width="200"/></td>
+    <td><img src="website/img/compass.webp" alt="The Find compass: a sweep turns and friends are placed around you by direction and distance" width="200"/></td>
+    <td><img src="website/img/group.webp" alt="A group chat with ticks showing who has your message" width="200"/></td>
+  </tr>
+  <tr>
+    <td>Hold Help for 3 seconds</td>
+    <td>Friends get an arrow to you</td>
+    <td>See everyone around you</td>
+    <td>Group chats, no signal needed</td>
   </tr>
 </table>
 
 ## What it does
 
-- **Find.** A map of the venue showing you and your friends, with how far away each one is and when their location was last updated. Venue maps ship inside the app, so the map works with no data at all.
-- **Help.** Hold the Help button for three seconds and your location, plus a note like "red cap, near the sound desk", goes to every friend. It keeps resending until it gets through and tells you plainly who it reached. Friends get an alarm-style alert, which can sound through Do Not Disturb if they allow it.
+- **Find.** A compass shows your friends around you by direction and distance, turning with your phone. Tap someone for a big arrow and how far away they are. A list and a venue map are one tap away; venue maps ship inside the app, so they work with no data at all.
+- **Help.** Hold the Help button for three seconds and your location, plus a note like "red cap, near the sound desk", goes to every friend. It keeps resending until it gets through and tells you who it reached. Friends get an alarm-style alert, which can sound through Do Not Disturb if they allow it.
 - **Meeting points.** Drop a pin and your group gets it. Every phone that has it keeps passing it on for a while, so friends who were out of range get it when they come back.
-- **Friends-only chat.** Message the people you scanned, nobody else.
+- **Friends-only chat and groups.** Message the people you scanned, nobody else, one to one or in groups of up to 12. Ticks show who has your message and who read it; tap a message to see each person.
 - **Set up before the show.** You add friends in person by scanning each other's QR code. Only people you have scanned can see your location or message you.
 
 ## How it gets messages through

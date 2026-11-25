@@ -84,6 +84,15 @@ object TestHookDriver {
             "mosh_state" -> moshState(context, intent.requiredString("peer"))
             "mosh_demo" -> moshDemo(context, intent.getStringExtra("lat")?.toDoubleOrNull() ?: 28.4689, intent.getStringExtra("lon")?.toDoubleOrNull() ?: 77.0664, intent.getStringExtra("help") == "true")
             "mosh_help" -> moshHelp(context, intent.requiredString("action"))
+            // Debug only: move my synthetic position (metres north/east of the public venue point) for screen recordings.
+            "mosh_me" -> {
+                val lat0 = 28.4689; val lon0 = 77.0664
+                val n = intent.getStringExtra("n")?.toDoubleOrNull() ?: 0.0
+                val e = intent.getStringExtra("e")?.toDoubleOrNull() ?: 0.0
+                com.bitchat.android.mosh.MoshRuntime.updateMyLocation(com.bitchat.android.mosh.LocationUpdate(
+                    lat0 + n / 111_320.0, lon0 + e / (111_320.0 * Math.cos(Math.toRadians(lat0))), 4f, System.currentTimeMillis(), 80))
+                ok("mosh_me")
+            }
             "test_relay" -> testRelay(context, intent.getStringExtra("url").orEmpty())
             "net" -> net(context)
             "verification_set" -> verificationSet(
