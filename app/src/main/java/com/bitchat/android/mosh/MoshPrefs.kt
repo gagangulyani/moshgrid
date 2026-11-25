@@ -14,8 +14,9 @@ class MoshPrefs(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_INTERNET, true)
         set(v) = prefs.edit().putBoolean(KEY_INTERNET, v).apply()
 
+    /** Crash reports: on by default, shown as a switch during setup and in You. */
     var monitoringOptIn: Boolean
-        get() = prefs.getBoolean(KEY_MONITORING, false)
+        get() = prefs.getBoolean(KEY_MONITORING, true)
         set(v) = prefs.edit().putBoolean(KEY_MONITORING, v).apply()
 
     var shareLocation: Boolean
@@ -52,4 +53,5 @@ class MoshPrefs(private val prefs: SharedPreferences) {
 }
 
 fun nostrAllowed(p: MoshPrefs): Boolean = p.internet
-fun sentryAllowed(p: MoshPrefs): Boolean = p.internet && p.monitoringOptIn
+/** Crash reports go out only after setup (where the switch is shown), with Internet on and the switch on. */
+fun sentryAllowed(p: MoshPrefs): Boolean = p.internet && p.monitoringOptIn && p.onboardingDone

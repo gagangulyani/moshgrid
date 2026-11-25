@@ -56,7 +56,7 @@ Requires JDK 21 and the Android SDK versions in `gradle/libs.versions.toml`.
 ./gradlew testDebugUnitTest
 ```
 
-Release builds are signed with a key that is not in this repository. Crash reporting is off unless you build with `-PsentryDsn=...`, and in the app it stays off until the user turns it on. See `AGENTS.md` for project conventions and `docs/` for protocol specs and the release guide.
+Release builds are signed with a key that is not in this repository. Crash reporting is off unless you build with `-PsentryDsn=...`, and in the app it is on by default: the switch is shown during setup, nothing is sent before setup ends, and it can be turned off any time in You. See `AGENTS.md` for project conventions and `docs/` for protocol specs and the release guide.
 
 ## Verify a download
 

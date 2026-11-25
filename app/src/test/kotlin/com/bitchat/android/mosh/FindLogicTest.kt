@@ -111,5 +111,29 @@ class FindLogicTest {
         assertEquals(0.48, b.west, 1e-9); assertEquals(0.5, b.east, 1e-9)
         assertNull(fitBox(emptyList()))
     }
-}
 
+    @Test
+    fun radar_radius_grows_with_distance_and_stays_inside() {
+        assertEquals(26.0 / 150, radarFraction(0.0), 1e-9)
+        assertEquals(1.0, radarFraction(800.0), 1e-9)
+        assertEquals(1.0, radarFraction(5_000.0), 1e-9)
+        assertTrue(radarFraction(50.0) < radarFraction(200.0))
+        assertTrue(radarFraction(200.0) < radarFraction(600.0))
+    }
+
+    @Test
+    fun dot_field_lights_dots_toward_the_target() {
+        val ahead = dotField(0.0)
+        assertEquals(17 * 17, ahead.size)
+        assertTrue(ahead[8 * 17 + 8].centre)
+        // Straight up from the centre is lit, straight down is not.
+        assertTrue(ahead[2 * 17 + 8].lit)
+        assertFalse(ahead[14 * 17 + 8].lit)
+        // Pointing right lights the right side instead.
+        val right = dotField(90.0)
+        assertTrue(right[8 * 17 + 14].lit)
+        assertFalse(right[2 * 17 + 8].lit)
+        // Corners are outside the round field.
+        assertEquals(0f, ahead[0].alpha)
+    }
+}

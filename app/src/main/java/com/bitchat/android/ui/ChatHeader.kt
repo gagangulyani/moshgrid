@@ -413,6 +413,8 @@ fun ConversationHeader(
     avatarKey: String? = null,
     /** MoshGrid: one short line under the name, e.g. whether they are in reach. */
     subtitle: String? = null,
+    /** MoshGrid: when set, a back arrow on the left closes the chat, as in the design. */
+    onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -422,9 +424,14 @@ fun ConversationHeader(
             modifier = modifier
                 .fillMaxWidth()
                 .height(ChatHeaderHeight)
-                .padding(start = 16.dp, end = HeaderInsetEnd),
+                .padding(start = if (onBack != null) 4.dp else 16.dp, end = HeaderInsetEnd),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (onBack != null) {
+                androidx.compose.material3.IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                    Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to chats")
+                }
+            }
             Row(
                 modifier = Modifier
                     .weight(1f)

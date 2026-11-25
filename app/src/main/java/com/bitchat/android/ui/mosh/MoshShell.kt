@@ -2,6 +2,11 @@ package com.bitchat.android.ui.mosh
 
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -56,7 +62,7 @@ import java.util.Date
 import java.util.Locale
 
 /** Pages opened from home (⋮ menu, network button, You), shown full screen with a back arrow. */
-private enum class Page { FRIENDS, NETWORK, SETTINGS }
+private enum class Page { FRIENDS, NETWORK, LOCATION, PROBLEMS, ABOUT }
 
 /** How loud an in-app banner is: Help is solid red, problems are amber, the rest are plain tiles. */
 private enum class Tone { HELP, WARN, INFO }
@@ -76,6 +82,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
     }
     var tab by remember { mutableStateOf(HomeTab.CHATS) }
     var page by remember { mutableStateOf<Page?>(null) }
+    var friendOpen by remember { mutableStateOf<String?>(null) }
     var showHelp by remember { mutableStateOf(false) }
     // Friend to focus on Find, from a tapped Help notification. Cleared when Find is opened by hand.
     var findFocus by remember { mutableStateOf(openFind?.first) }
@@ -135,12 +142,16 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
     Box(Modifier.fillMaxSize().statusBarsPadding()) {
         when {
             showHelp -> HelpScreen { showHelp = false }
-            page == Page.FRIENDS -> MoshPage("Friends", { page = null }) {
+            page == Page.FRIENDS -> MoshPage("Friends", { if (friendOpen != null) friendOpen = null else page = null }) {
                 FriendsScreen(onAddFriend = { chatViewModel.showVerificationSheet() },
-                    onChat = { peer -> chatViewModel.showPrivateChatSheet(peer) })
+                    onChat = { peer -> chatViewModel.showPrivateChatSheet(peer) },
+                    onFind = { peer -> friendOpen = null; goFind(peer, false) },
+                    open = friendOpen, onOpen = { friendOpen = it })
             }
             page == Page.NETWORK -> MoshPage("Network", { page = null }) { NetworkScreen(chatViewModel) }
-            page == Page.SETTINGS -> MoshPage("Settings", { page = null }) { SettingsScreen(showTitle = false) }
+            page == Page.LOCATION -> MoshPage("Location", { page = null }) { LocationPage() }
+            page == Page.PROBLEMS -> MoshPage("Crash reports", { page = null }) { ProblemsPage() }
+            page == Page.ABOUT -> MoshPage("About", { page = null }) { AboutPage() }
             else -> Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f)) {
                     when (tab) {
@@ -150,25 +161,34 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
                             onAddFriend = { chatViewModel.showVerificationSheet() },
                             onNetwork = { page = Page.NETWORK },
                             onFriends = { page = Page.FRIENDS },
-                            onSettings = { page = Page.SETTINGS },
+                            onSettings = { tab = HomeTab.YOU },
                             banners = { Column { banners() } },
                         )
                         HomeTab.FIND -> Column {
                             banners()
                             Box(Modifier.weight(1f)) {
                                 androidx.compose.runtime.key(openFind?.second, findRequest) {
-                                    FindScreen(focusPeerID = findFocus, focusMeeting = findMeeting)
+                                    FindScreen(focusPeerID = findFocus, focusMeeting = findMeeting,
+                                        onAddFriend = { chatViewModel.showVerificationSheet() },
+                                        onMessage = { peer -> chatViewModel.showPrivateChatSheet(peer) },
+                                        onMenu = listOf(
+                                            "Add a friend" to { chatViewModel.showVerificationSheet() },
+                                            "Friends" to { page = Page.FRIENDS },
+                                            "Network" to { page = Page.NETWORK },
+                                            "Settings" to { tab = HomeTab.YOU },
+                                        ))
                                 }
                             }
                         }
-                        HomeTab.YOU -> SettingsScreen(showTitle = true, header = {
-                            YouHeader(
-                                name = chatViewModel.nickname.collectAsState().value,
-                                onMyCode = { chatViewModel.showVerificationSheet() },
-                                onFriends = { page = Page.FRIENDS },
-                                onNetwork = { page = Page.NETWORK },
-                            )
-                        })
+                        HomeTab.YOU -> YouScreen(
+                            name = chatViewModel.nickname.collectAsState().value,
+                            onMyCode = { chatViewModel.showVerificationSheet() },
+                            onFriends = { page = Page.FRIENDS },
+                            onLocation = { page = Page.LOCATION },
+                            onNetwork = { page = Page.NETWORK },
+                            onProblems = { page = Page.PROBLEMS },
+                            onAbout = { page = Page.ABOUT },
+                        )
                     }
                 }
                 if (tab == HomeTab.FIND) HelpBar(ownHelpOn) { showHelp = true }
@@ -183,25 +203,133 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
     chatPeer?.let { peer ->
         com.bitchat.android.ui.PrivateChatSheet(isPresented = true, peerID = peer, viewModel = chatViewModel, onDismiss = {
             chatViewModel.hidePrivateChatSheet(); chatViewModel.endPrivateChat()
+        }, onFind = { friend ->
+            chatViewModel.hidePrivateChatSheet(); chatViewModel.endPrivateChat(); goFind(friend, false)
         })
     }
 }
 
-/** Top of the You tab: your name as friends see it, your code, friends and network. */
+/**
+ * The You tab, laid out like the design's Settings: you at the top (tap for your code), then one row
+ * per topic with its current state in a single grey line. Switches live on each topic's page.
+ */
 @Composable
-private fun YouHeader(name: String, onMyCode: () -> Unit, onFriends: () -> Unit, onNetwork: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.padding(bottom = 8.dp)) {
-            MoshAvatar(name.ifBlank { "?" }, "me", 56.dp)
-            Column {
-                Text(name.ifBlank { "No name yet" }, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Friends see this name", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun YouScreen(
+    name: String, onMyCode: () -> Unit, onFriends: () -> Unit, onLocation: () -> Unit,
+    onNetwork: () -> Unit, onProblems: () -> Unit, onAbout: () -> Unit,
+) {
+    val prefs = MoshRuntime.prefs
+    val cs = MaterialTheme.colorScheme
+    var friends by remember { mutableStateOf(MoshRuntime.friends.friends()) }
+    LaunchedEffect(Unit) { while (true) { friends = MoshRuntime.friends.friends(); kotlinx.coroutines.delay(3_000) } }
+    val mutual = friends.count { it.status == com.bitchat.android.mosh.FriendStatus.FRIEND }
+    val waiting = friends.size - mutual
+    Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+        MoshTitle("You")
+        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth().clip(MoshShapes.Tile).background(cs.surface)
+                .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onMyCode).padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                MoshAvatar(name.ifBlank { "?" }, "me", 56.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(name.ifBlank { "No name yet" }, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("Your name and code", fontSize = 14.sp, color = cs.onSurfaceVariant)
+                }
+                androidx.compose.material3.Icon(Icons.Outlined.QrCode2, contentDescription = null, tint = cs.primary,
+                    modifier = Modifier.size(28.dp))
+            }
+            Column(Modifier.fillMaxWidth().clip(MoshShapes.Tile).background(cs.surface).padding(horizontal = 16.dp, vertical = 4.dp)) {
+                MoshActionRow("Friends", when {
+                    friends.isEmpty() -> "Nobody yet"
+                    waiting == 0 -> "$mutual ${if (mutual == 1) "friend" else "friends"}"
+                    else -> "$mutual ${if (mutual == 1) "friend" else "friends"} · $waiting waiting"
+                }, Icons.Outlined.Group, onFriends)
+                MoshActionRow("Location", if (prefs.shareLocation) "Friends can see where you are" else "Not sharing",
+                    Icons.Outlined.LocationOn, onLocation)
+                MoshActionRow("Network", listOf(
+                    "Bluetooth " + if (prefs.bluetooth) "on" else "off",
+                    "Internet " + if (prefs.internet) "on" else "off",
+                ).joinToString(" · "), Icons.Outlined.SignalCellularAlt, onNetwork)
+                MoshActionRow("Crash reports", if (prefs.monitoringOptIn) "On" else "Off", Icons.Outlined.BugReport, onProblems)
+                MoshActionRow("About", "How MoshGrid works · open source", Icons.Outlined.Info, onAbout)
             }
         }
-        MoshActionRow("My code", "Friends scan it to add you", Icons.Outlined.QrCode2, onMyCode)
-        MoshActionRow("Friends", "Who gets your location and Help", Icons.Outlined.Group, onFriends)
-        MoshActionRow("Network", "Bluetooth, internet and phones nearby", Icons.Outlined.SignalCellularAlt, onNetwork)
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Location sharing: one switch and what it means. */
+@Composable
+private fun LocationPage() {
+    val prefs = MoshRuntime.prefs
+    var share by remember { mutableStateOf(prefs.shareLocation) }
+    Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        MoshSwitchRow("Share my location", if (share) "Friends you added see where you are." else "Friends can't find you on the compass or map.", share) {
+            share = it; prefs.shareLocation = it
+        }
+        Why("Who sees my location?", listOf(
+            "Only friends you added by scanning codes. Nobody else, not even MoshGrid.",
+            "It's locked so only they can open it.",
+            "Help alerts always include where you are, even with sharing off.",
+        ))
+    }
+}
+
+/** Crash reports and sharing the field log by hand. */
+@Composable
+private fun ProblemsPage() {
+    val context = LocalContext.current
+    val prefs = MoshRuntime.prefs
+    var monitoring by remember { mutableStateOf(prefs.monitoringOptIn) }
+    Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        MoshSwitchRow("Send crash reports",
+            if (prefs.internet) "Helps fix MoshGrid. No personal data." else "Only sent when Internet is on.", monitoring) {
+            monitoring = it; prefs.monitoringOptIn = it
+            com.bitchat.android.mosh.monitor.Monitoring.init(context.applicationContext as android.app.Application, prefs)
+        }
+        Why("What's in a crash report?", listOf(
+            "What went wrong in the app, plus your phone model and Android version.",
+            "Never your location, messages, names or friends.",
+            "Goes to MoshGrid's own server, only when Internet is on.",
+            "Turning it off stops it straight away.",
+        ))
+        MoshActionRow("Share diagnostics", "Event counts only. You choose where to send it.", Icons.Outlined.Share) {
+            // Recording the share also creates the log, so the button works on a fresh install or after a wipe.
+            MoshMonitor.event(context, "diagnostics_shared")
+            val file = MoshMonitor.fieldLog(context).file
+            if (file.exists()) {
+                val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                runCatching { context.startActivity(Intent.createChooser(send, "Share diagnostics").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            }
+        }
+    }
+}
+
+/** Version, how it works in three lines, and the licence. */
+@Composable
+private fun AboutPage() {
+    val context = LocalContext.current
+    val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "" }
+    val cs = MaterialTheme.colorScheme
+    Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("MoshGrid $version", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+        listOf(
+            "Phones pass messages to each other over Bluetooth, so it works with no signal.",
+            "With signal, messages also go over the internet to friends out of range.",
+            "Everything is locked so only the friend it's for can open it.",
+        ).forEach { Text(it, fontSize = 16.sp, color = cs.onSurfaceVariant) }
+        Text("Open source (GPL-3.0), based on bitchat-android.", fontSize = 14.sp, color = cs.onSurfaceVariant)
+        MoshActionRow("Source code", "On GitHub", Icons.Outlined.Info) {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/gagangulyani/moshgrid"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }
     }
 }
 
@@ -251,79 +379,6 @@ private fun Banner(title: String, line: String?, tone: Tone, action: String = "O
             colors = if (tone == Tone.HELP) ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)
             else ButtonDefaults.buttonColors(containerColor = cs.primary, contentColor = cs.onPrimary)) {
             Text(action, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-private fun SettingsSection(title: String, content: @Composable () -> Unit) {
-    Column {
-        Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 2.dp))
-        content()
-    }
-}
-
-/** Networks, location sharing, crash reports, and sharing the field log by hand. */
-@Composable
-fun SettingsScreen(showTitle: Boolean = true, header: @Composable () -> Unit = {}) {
-    val context = LocalContext.current
-    val prefs = MoshRuntime.prefs
-    var bluetooth by remember { mutableStateOf(prefs.bluetooth) }
-    var internet by remember { mutableStateOf(prefs.internet) }
-    var share by remember { mutableStateOf(prefs.shareLocation) }
-    var monitoring by remember { mutableStateOf(prefs.monitoringOptIn) }
-    // Scrolls so large text sizes never hide the last settings.
-    Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-        if (showTitle) MoshTitle("You")
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            header()
-            SettingsSection("Network") {
-                MoshSwitchRow("Bluetooth", "Messages hop between phones when there's no signal.", bluetooth) {
-                    bluetooth = it; prefs.bluetooth = it; com.bitchat.android.mosh.MoshNetworkGate.apply(context, prefs)
-                }
-                MoshSwitchRow("Internet",
-                    if (internet) "Reach friends who are out of Bluetooth range." else "Off: nothing leaves your phone except over Bluetooth.",
-                    internet) {
-                    internet = it; prefs.internet = it; com.bitchat.android.mosh.MoshNetworkGate.apply(context, prefs)
-                }
-                Why("What goes over the internet?", listOf(
-                    "Messages, location, Help and meeting points, for friends out of Bluetooth range.",
-                    "They're locked: only that friend can open them.",
-                    "They pass through MoshGrid's own relay, with public relays as backup. Relays see your internet address and when you send, not what you send.",
-                    "Crash reports too, if you turn them on.",
-                ))
-            }
-            SettingsSection("Location") {
-                MoshSwitchRow("Share my location", "Friends you added see where you are.", share) {
-                    share = it; prefs.shareLocation = it
-                }
-            }
-            SettingsSection("Problems") {
-                MoshSwitchRow("Send crash reports",
-                    if (internet) "Helps fix MoshGrid. No personal data." else "Only sent when Internet is on.", monitoring) {
-                    monitoring = it; prefs.monitoringOptIn = it
-                    com.bitchat.android.mosh.monitor.Monitoring.init(context.applicationContext as android.app.Application, prefs)
-                }
-                Why("What's in a crash report?", listOf(
-                    "What went wrong in the app, plus your phone model and Android version.",
-                    "Never your location, messages, names or friends.",
-                    "Goes to MoshGrid's own server, only when Internet is on.",
-                    "Turning it off stops it straight away.",
-                ))
-                MoshActionRow("Share diagnostics", "Event counts only. You choose where to send it.", Icons.Outlined.Share) {
-                    // Recording the share also creates the log, so the button works on a fresh install or after a wipe.
-                    MoshMonitor.event(context, "diagnostics_shared")
-                    val file = MoshMonitor.fieldLog(context).file
-                    if (file.exists()) {
-                        val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
-                        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)
-                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        runCatching { context.startActivity(Intent.createChooser(send, "Share diagnostics").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                    }
-                }
-            }
-            Text("MoshGrid is open source (GPL-3.0), based on bitchat-android.", fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

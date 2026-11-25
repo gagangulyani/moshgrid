@@ -1,5 +1,9 @@
 package com.bitchat.android.ui.mosh
 
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.core.Animatable
@@ -205,81 +209,110 @@ internal fun helpStatus(routes: Map<String, com.bitchat.android.mosh.MoshRoute>,
     }
 }
 
-/** Friends list with status, location pause, and the way to add someone in person. */
+/**
+ * Friends, as in the design: one plain row per friend (tap for their page) and one way to add
+ * someone. Chat, Find, location sharing and Remove live on the friend's own page.
+ */
 @Composable
-fun FriendsScreen(onAddFriend: () -> Unit, onChat: (String) -> Unit) {
+fun FriendsScreen(onAddFriend: () -> Unit, onChat: (String) -> Unit, onFind: (String) -> Unit = {},
+                  open: String? = null, onOpen: (String?) -> Unit = {}) {
     var friends by remember { mutableStateOf(MoshRuntime.friends.friends()) }
     var paused by remember { mutableStateOf(MoshRuntime.prefs.pausedFriends) }
-    var removing by remember { mutableStateOf<com.bitchat.android.mosh.Friend?>(null) }
-    val context = LocalContext.current
     val soft = MaterialTheme.colorScheme.onSurfaceVariant
-    LaunchedEffect(Unit) { while (true) { delay(5_000); friends = MoshRuntime.friends.friends() } }
+    LaunchedEffect(Unit) { while (true) { delay(3_000); friends = MoshRuntime.friends.friends(); paused = MoshRuntime.prefs.pausedFriends } }
+    val current = friends.firstOrNull { it.peerID == open }
+    if (current != null) {
+        androidx.activity.compose.BackHandler { onOpen(null) }
+        FriendProfile(current, sharing = current.peerID !in paused,
+            onShare = { on -> MoshRuntime.prefs.setPaused(current.peerID, !on); paused = MoshRuntime.prefs.pausedFriends },
+            onChat = { onChat(current.peerID) }, onFind = { onFind(current.peerID) },
+            onRemoved = { friends = MoshRuntime.friends.friends(); onOpen(null) })
+        return
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { MoshTitle("Friends") }
-        item {
-            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(onClick = onAddFriend, modifier = Modifier.fillMaxWidth().height(56.dp), shape = MoshShapes.Pill,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary)) {
-                    Text("Add a friend in person", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+        if (friends.isEmpty()) {
+            item {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("No friends yet", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Help reaches nobody until you add someone. Stand next to each other and scan each other's code.",
+                        fontSize = 16.sp, color = soft, textAlign = TextAlign.Center)
                 }
-                if (friends.isEmpty()) {
-                    Text("No friends yet. Help reaches nobody.", fontSize = 16.sp, color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
-                } else {
-                    val mutual = friends.count { it.status == FriendStatus.FRIEND }
-                    Text("Help reaches $mutual of ${friends.size}", fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                        color = if (mutual == 0) MaterialTheme.colorScheme.error else soft, modifier = Modifier.padding(top = 6.dp))
-                }
-                Why("How do I add someone?", listOf(
-                    "Stand next to each other.",
-                    "Scan each other's code. Both of you need to scan.",
-                ))
+            }
+        } else {
+            val mutual = friends.count { it.status == FriendStatus.FRIEND }
+            item {
+                Text("Help reaches $mutual of ${friends.size}", fontSize = 14.sp, color = if (mutual == 0) MaterialTheme.colorScheme.error else soft,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
             }
         }
         items(friends, key = { it.peerID }) { f ->
-            // Avatar and name on top, controls below: stays readable at large text sizes.
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    MoshAvatar(f.displayName, f.peerID)
-                    Column(Modifier.weight(1f)) {
-                        Text(f.displayName, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                        Text(if (f.status == FriendStatus.WAITING_FOR_THEM) "Waiting for them to scan you" else "Friends",
-                            fontSize = 14.sp, color = soft)
-                    }
+            val waiting = f.status == FriendStatus.WAITING_FOR_THEM
+            Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Open") { onOpen(f.peerID) }.padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                MoshAvatar(f.displayName, f.peerID, 48.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(f.displayName, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, maxLines = 1)
+                    Text(when {
+                        waiting -> "Waiting for them to scan you"
+                        f.peerID in paused -> "Not sharing your location"
+                        else -> "Sees your location"
+                    }, fontSize = 14.sp, color = if (waiting) MoshColors.Amber else soft, maxLines = 1)
                 }
-                Row(Modifier.fillMaxWidth().padding(start = 56.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { onChat(f.peerID) }, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("Chat", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                    }
-                    TextButton(onClick = { removing = f }, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("Remove", color = MaterialTheme.colorScheme.error)
-                    }
-                    Spacer(Modifier.weight(1f))
-                    val sharing = f.peerID !in paused
-                    Row(Modifier.heightIn(min = 48.dp).toggleable(value = sharing, role = androidx.compose.ui.semantics.Role.Switch) { on ->
-                        MoshRuntime.prefs.setPaused(f.peerID, !on); paused = MoshRuntime.prefs.pausedFriends
-                    }, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Share location", fontSize = 13.sp, color = soft, modifier = Modifier.padding(end = 8.dp))
-                        Switch(checked = sharing, onCheckedChange = null)
-                    }
-                }
-                HorizontalDivider(Modifier.padding(start = 64.dp, top = 4.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = soft)
+            }
+        }
+        item {
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 16.dp).fillMaxWidth().height(52.dp).clip(MoshShapes.Pill)
+                .background(MaterialTheme.colorScheme.primary).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onAddFriend),
+                contentAlignment = Alignment.Center) {
+                Text("Add a friend", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = MaterialTheme.colorScheme.onPrimary)
             }
         }
     }
-    removing?.let { f ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { removing = null },
-            title = { Text("Remove ${f.displayName}?") },
-            text = { Text("They stop getting your location, Help and meeting points. To add them again, scan each other in person.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    MoshRuntime.removeFriend(context, f)
-                    friends = MoshRuntime.friends.friends(); removing = null
-                }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
-        )
+}
+
+/** One friend's page, as in the design's profile: who, Message and Find, sharing, and Remove at the bottom. */
+@Composable
+private fun FriendProfile(
+    f: com.bitchat.android.mosh.Friend, sharing: Boolean, onShare: (Boolean) -> Unit,
+    onChat: () -> Unit, onFind: () -> Unit, onRemoved: () -> Unit,
+) {
+    val context = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var removing by remember { mutableStateOf(false) }
+    val mutual = f.status == FriendStatus.FRIEND
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Spacer(Modifier.height(8.dp))
+        MoshAvatar(f.displayName, f.peerID, 88.dp)
+        Text(f.displayName, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+        Text(if (mutual) "Friends" else "Waiting for them to scan you", fontSize = 15.sp,
+            color = if (mutual) cs.onSurfaceVariant else MoshColors.Amber)
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.weight(1f).height(52.dp).clip(MoshShapes.Pill).background(cs.surface).clickable(onClick = onChat),
+                contentAlignment = Alignment.Center) { Text("Message", fontWeight = FontWeight.SemiBold, fontSize = 16.sp) }
+            if (mutual) Box(Modifier.weight(1f).height(52.dp).clip(MoshShapes.Pill).background(cs.primary).clickable(onClick = onFind),
+                contentAlignment = Alignment.Center) { Text("Find", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = cs.onPrimary) }
+        }
+        Column(Modifier.fillMaxWidth().padding(top = 8.dp).clip(MoshShapes.Tile).background(cs.surface).padding(horizontal = 16.dp)) {
+            MoshSwitchRow("Share my location with ${f.displayName}",
+                if (sharing) "They see where you are." else "They can't see where you are. Help alerts still include it.", sharing, onChange = onShare)
+        }
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = { removing = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text("Remove ${f.displayName}", color = cs.error, fontWeight = FontWeight.SemiBold)
+        }
     }
+    if (removing) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { removing = false },
+        title = { Text("Remove ${f.displayName}?") },
+        text = { Text("They stop getting your location, Help and meeting points. To add them again, scan each other in person.") },
+        confirmButton = {
+            TextButton(onClick = { MoshRuntime.removeFriend(context, f); removing = false; onRemoved() }) {
+                Text("Remove", color = cs.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = { removing = false }) { Text("Cancel") } },
+    )
 }

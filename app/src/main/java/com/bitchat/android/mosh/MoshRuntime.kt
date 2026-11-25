@@ -74,14 +74,17 @@ object MoshRuntime {
      * Friend's name for a mesh peer ID or a contact conversation ID ("contact_" + fingerprint).
      * MoshGrid announces no names in clear, so screens and notifications use this. Null if unknown.
      */
-    fun friendNameFor(id: String): String? {
+    fun friendNameFor(id: String): String? = friendFor(id)?.displayName?.takeIf { it.isNotBlank() }
+
+    /** The friend behind a chat id: their peer id, or a contact conversation id carrying their fingerprint. */
+    fun friendFor(id: String): Friend? {
         if (!isInitialised) return null
         val resolver = com.bitchat.android.services.ContactIdentityResolver
         val fingerprint = resolver.fingerprintFromContactConversationId(id)
         return friends.friends().firstOrNull { f ->
             f.peerID == id || (fingerprint != null &&
                 resolver.bytesFromHex(f.noiseKeyHex)?.let { resolver.fingerprintHex(it) } == fingerprint)
-        }?.displayName?.takeIf { it.isNotBlank() }
+        }
     }
 
     /** Help to friends. Position comes from the latest fix. */

@@ -112,3 +112,41 @@ fun fitBox(points: List<Pair<Double, Double>>, minSpanM: Double = 250.0): GeoBox
     if (e - w < minLon) { val c = (w + e) / 2; w = c - minLon / 2; e = c + minLon / 2 }
     return GeoBox(s, w, n, e)
 }
+
+/**
+ * Where someone sits on the compass, as a fraction of its outer ring (0 = centre). Log scale, so
+ * friends close by do not bunch up in the middle; 800 m and beyond sit on the edge.
+ */
+fun radarFraction(distanceM: Double): Double {
+    val d = distanceM.coerceIn(0.0, 800.0)
+    return (26 + 124 * Math.log(1 + d / 25) / Math.log(1 + 800.0 / 25)) / 150
+}
+
+/** One dot of the Find arrow. [lit] dots form the beam toward the target; [alpha] 0 = outside the round field. */
+data class FieldDot(val lit: Boolean, val centre: Boolean, val alpha: Float)
+
+/**
+ * The design's 17 by 17 dot field: a beam of lit dots fanning out from the centre toward
+ * [relativeDeg] (0 = up on screen), brighter further out. Row-major, top-left first.
+ */
+fun dotField(relativeDeg: Double): List<FieldDot> {
+    val n = 17; val c = 8
+    val ang = Math.toRadians(relativeDeg - 90)
+    val out = ArrayList<FieldDot>(n * n)
+    for (y in 0 until n) for (x in 0 until n) {
+        val dx = (x - c).toDouble(); val dy = (y - c).toDouble()
+        val r = Math.hypot(dx, dy)
+        when {
+            r > 8.4 -> out += FieldDot(lit = false, centre = false, alpha = 0f)
+            r < 0.6 -> out += FieldDot(lit = false, centre = true, alpha = 1f)
+            else -> {
+                var a = atan2(dy, dx) - ang
+                a = atan2(sin(a), cos(a))
+                val beam = (1 - Math.abs(a) / 0.42).coerceAtLeast(0.0)
+                val lit = beam > 0.05
+                out += FieldDot(lit, centre = false, alpha = if (lit) (0.25 + 0.75 * beam * minOf(1.0, r / 3.5)).toFloat() else 0.22f)
+            }
+        }
+    }
+    return out
+}

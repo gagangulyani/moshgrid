@@ -1,6 +1,7 @@
 package com.bitchat.android.ui.mosh
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -179,7 +180,16 @@ fun ChatsHome(
     var menu by remember { mutableStateOf(false) }
 
     val rows = remember(conversations, friends) { buildRows(friends, conversations) }
+    var chip by remember { mutableStateOf(0) }
+    val locations by MoshRuntime.store.locations.collectAsState()
+    val me by MoshRuntime.myLocation.collectAsState()
+    // Close by: a fresh location (under 10 min) within 200 m of you.
+    fun isClose(peer: String): Boolean {
+        val l = locations[peer] ?: return false; val m = me ?: return false
+        return System.currentTimeMillis() - l.takenAtMs < 600_000 && com.bitchat.android.mosh.distanceM(m.lat, m.lon, l.lat, l.lon) <= 200
+    }
     val shown = rows.filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
+        .filter { when (chip) { 1 -> it.unread > 0; 2 -> isClose(it.peerID); else -> true } }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
@@ -220,10 +230,30 @@ fun ChatsHome(
                     }
                 }
             }
+            if (rows.isNotEmpty()) {
+                item {
+                    Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("All", "Unread", "Close by").forEachIndexed { i, label ->
+                            val on = chip == i
+                            Box(Modifier.height(40.dp).clip(RoundedCornerShape(20.dp))
+                                .background(if (on) cs.primary.copy(alpha = 0.16f) else cs.surface)
+                                .selectable(selected = on, role = Role.RadioButton) { chip = i }.padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.Center) {
+                                Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (on) cs.primary else cs.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
             items(shown, key = { it.peerID }) { r -> ChatRowItem(r) { onOpenChat(r.peerID) } }
             if (rows.isNotEmpty() && shown.isEmpty()) {
                 item {
-                    Text("No chats match \"$query\"", color = cs.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(32.dp))
+                    Text(when {
+                        query.isNotBlank() -> "No chats match \"$query\""
+                        chip == 1 -> "No unread messages."
+                        else -> "Nobody within 200 m right now."
+                    }, color = cs.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(32.dp))
                 }
             }
             if (rows.isEmpty()) {

@@ -16,9 +16,9 @@ class MoshPrefsTest {
     )
 
     @Test
-    fun defaults_are_bluetooth_and_internet_on_monitoring_off() {
+    fun defaults_are_bluetooth_internet_and_crash_reports_on() {
         val p = prefs()
-        assertTrue(p.bluetooth); assertTrue(p.internet); assertFalse(p.monitoringOptIn); assertTrue(p.shareLocation)
+        assertTrue(p.bluetooth); assertTrue(p.internet); assertTrue(p.monitoringOptIn); assertTrue(p.shareLocation)
         assertFalse(p.offlineOnly)
     }
 
@@ -30,11 +30,14 @@ class MoshPrefsTest {
     }
 
     @Test
-    fun sentry_needs_opt_in_even_with_internet() {
+    fun sentry_waits_for_setup_and_stops_when_switched_off() {
         val p = prefs()
+        // On by default, but nothing is sent before the user has seen the switch during setup.
         assertFalse(sentryAllowed(p))
-        p.monitoringOptIn = true
+        p.onboardingDone = true
         assertTrue(sentryAllowed(p))
+        p.monitoringOptIn = false
+        assertFalse(sentryAllowed(p))
     }
 
     @Test

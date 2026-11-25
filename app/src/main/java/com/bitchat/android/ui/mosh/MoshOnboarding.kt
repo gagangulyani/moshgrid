@@ -351,7 +351,7 @@ private fun batteryUnrestricted(context: Context): Boolean =
 
 @Composable
 private fun ReportsStep(monitoring: Boolean, onMonitoring: (Boolean) -> Unit) {
-    StepTitle("Help us fix crashes?", "Optional. Never your location or messages.")
+    StepTitle("Help us fix crashes?", "On unless you turn it off. Never your location or messages.")
     SwitchCard(null, "Send crash reports", null, monitoring, onMonitoring)
     Why("What's in a report?", listOf(
         "What went wrong in the app, plus your phone model and Android version.",

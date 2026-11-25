@@ -7,6 +7,22 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.drawscope.rotate as rotateDraw
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import com.bitchat.android.mosh.dotField
+import com.bitchat.android.mosh.radarFraction
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +41,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.draw.clip
@@ -102,8 +119,17 @@ private const val GREY = "#6E6E6E"
 /** Background-only style: venue features come from the bundled GeoJSON, so no tiles or glyphs are needed. */
 private const val BASE_STYLE = """{"version":8,"sources":{},"layers":[{"id":"bg","type":"background","paint":{"background-color":"#050505"}}]}"""
 
+/** The three ways to look for friends, as tabs under the Find title. */
+private enum class FindView(val label: String) { COMPASS("Compass"), LIST("List"), MAP("Map") }
+
 @Composable
-fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
+fun FindScreen(
+    focusPeerID: String? = null,
+    focusMeeting: Boolean = false,
+    onAddFriend: () -> Unit = {},
+    onMessage: (String) -> Unit = {},
+    onMenu: List<Pair<String, () -> Unit>> = emptyList(),
+) {
     val context = LocalContext.current
     val venues = remember { loadVenues(context) }
     val me by MoshRuntime.myLocation.collectAsState()
@@ -113,55 +139,81 @@ fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
     val lastHeard by MoshRuntime.store.lastHeardMs.collectAsState()
     var friends by remember { mutableStateOf(MoshRuntime.friends.friends()) }
     var selected by remember { mutableStateOf(if (focusMeeting) MEETING else focusPeerID) }
+    var view by remember { mutableStateOf(FindView.COMPASS) }
     var longPress by remember { mutableStateOf<LatLng?>(null) }
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    var locationOn by remember { mutableStateOf(locationUsable(context)) }
     LaunchedEffect(Unit) {
-        while (true) { delay(5_000); now = System.currentTimeMillis(); friends = MoshRuntime.friends.friends() }
+        while (true) {
+            friends = MoshRuntime.friends.friends(); locationOn = locationUsable(context)
+            delay(3_000); now = System.currentTimeMillis()
+        }
     }
-    val pins = buildPins(friends, locations, me, meeting, help, now, selected)
-    // Draw the venue around me, else around a friend; with nobody located yet, preview the first venue.
-    val venue = VenueRegistry.around(pins.sortedByDescending { it.color == CYAN }.map { it.lat to it.lon }, venues)
-        ?: venues.firstOrNull().takeIf { pins.isEmpty() }
-    var fitRequest by remember { mutableIntStateOf(0) }
+    val turnOnLocation = rememberTurnOnLocation { locationOn = locationUsable(context) }
 
     val target = friends.firstOrNull { it.peerID == selected }
     val mp = meeting
-    val finding = (selected == MEETING && mp != null) || target != null
+    // Finding someone fills the screen; back returns to the view it was opened from.
+    androidx.activity.compose.BackHandler(enabled = selected != null) { selected = null }
+    if (selected == MEETING && mp != null) {
+        FindingView("Meeting point", me, LocationUpdate(mp.lat, mp.lon, 0f, mp.setAtMs, 0), now, MoshColors.Acid,
+            locationOn, turnOnLocation, place = true, onMessage = null) { selected = null }
+        return
+    }
+    if (target != null) {
+        FindingView("Finding ${target.displayName}", me, locations[target.peerID], now, avatarColor(target.peerID),
+            locationOn, turnOnLocation, name = target.displayName, onMessage = { onMessage(target.peerID) }) { selected = null }
+        return
+    }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (!finding) MoshTitle("Find")
-        // The map stays in place while finding someone, so MapLibre is not torn down and rebuilt.
-        Box(Modifier.fillMaxWidth().weight(1f)) {
-            VenueMap(
-                venue = venue,
-                pins = pins,
-                fitRequest = fitRequest,
-                onLongPress = { longPress = it },
-            )
-            if (venue != null) {
-                MapChip(venue.name, Modifier.align(Alignment.TopStart).padding(12.dp), bold = true)
+        MoshTitle("Find") {
+            if (onMenu.isNotEmpty()) Box {
+                var open by remember { mutableStateOf(false) }
+                IconButton(onClick = { open = true }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                }
+                androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    onMenu.forEach { (label, go) ->
+                        androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = { open = false; go() })
+                    }
+                }
             }
-            if (pins.isNotEmpty()) {
-                MapChip("Show everyone", Modifier.align(Alignment.TopEnd).padding(12.dp), bold = true, onClick = { fitRequest++ })
-            }
-            MapLegend(pins, Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 34.dp))
-            Text(
-                "© OpenStreetMap contributors",
-                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            )
         }
-        if (selected == MEETING && mp != null) {
-            GuidancePanel("Going to ${mp.label}", me, LocationUpdate(mp.lat, mp.lon, 0f, mp.setAtMs, 0), now,
-                arrowColor = MoshColors.Acid, showAge = false) { selected = null }
-        } else if (target != null) {
-            GuidancePanel("Finding ${target.displayName}", me, locations[target.peerID], now,
-                arrowColor = MoshColors.Pink) { selected = null }
-        } else {
-            meeting?.let { MeetingRow(it, me, onFind = { selected = MEETING }) }
-            FriendList(friends, locations, lastHeard, me, now) { selected = it }
+        FindTabs(view) { view = it }
+        when (view) {
+            FindView.COMPASS -> CompassView(friends, locations, me, meeting, now, locationOn, turnOnLocation, onAddFriend) { selected = it }
+            FindView.LIST -> Column(Modifier.fillMaxSize()) {
+                if (!locationOn) WarnNote("Your location is off, so distances can't be shown.", "Turn on", turnOnLocation)
+                else if (!MoshRuntime.prefs.shareLocation) WarnNote("You're not sharing your location, so friends can't find you.", null, null)
+                meeting?.let { MeetingRow(it, me, onFind = { selected = MEETING }) }
+                FriendList(friends, locations, lastHeard, me, now, onAddFriend) { selected = it }
+            }
+            FindView.MAP -> {
+                val pins = buildPins(friends, locations, me, meeting, help, now, selected)
+                // Draw the venue around me, else around a friend; with nobody located yet, preview the first venue.
+                val venue = VenueRegistry.around(pins.sortedByDescending { it.color == CYAN }.map { it.lat to it.lon }, venues)
+                    ?: venues.firstOrNull().takeIf { pins.isEmpty() }
+                var fitRequest by remember { mutableIntStateOf(0) }
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    VenueMap(venue = venue, pins = pins, fitRequest = fitRequest, onLongPress = { longPress = it })
+                    if (venue != null) MapChip(venue.name, Modifier.align(Alignment.TopStart).padding(12.dp), bold = true)
+                    if (pins.isNotEmpty()) {
+                        MapChip("Show everyone", Modifier.align(Alignment.TopEnd).padding(12.dp), bold = true, onClick = { fitRequest++ })
+                    }
+                    MapLegend(pins, Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 34.dp))
+                    Text(
+                        "© OpenStreetMap contributors",
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+                Text("Press and hold the map to set a meeting point.", fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp))
+            }
         }
     }
 
@@ -182,6 +234,247 @@ fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
         )
     }
 }
+
+/** Location permission given and location switched on. */
+private fun locationUsable(context: Context): Boolean {
+    val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED ||
+        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    val on = (context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager)
+        ?.let { androidx.core.location.LocationManagerCompat.isLocationEnabled(it) } == true
+    return granted && on
+}
+
+/** Asks for location permission if it is missing, else opens the phone's location switch. */
+@Composable
+private fun rememberTurnOnLocation(onResult: () -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { onResult() }
+    return {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted) ask.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION))
+        else runCatching {
+            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+}
+
+/** Segmented Compass | List | Map control from the design. */
+@Composable
+private fun FindTabs(view: FindView, onPick: (FindView) -> Unit) {
+    Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
+        .background(MaterialTheme.colorScheme.surface).padding(3.dp)) {
+        FindView.entries.forEach { v ->
+            val on = v == view
+            Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(22.dp))
+                .background(if (on) MaterialTheme.colorScheme.background else Color.Transparent)
+                .selectable(selected = on, role = Role.Tab) { onPick(v) }, contentAlignment = Alignment.Center) {
+                Text(v.label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** Amber note above the list, with an optional action. */
+@Composable
+private fun WarnNote(text: String, action: String?, onAction: (() -> Unit)?) {
+    Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp))
+        .background(MoshColors.Amber.copy(alpha = 0.18f)).padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(text, fontSize = 14.sp, modifier = Modifier.weight(1f).padding(vertical = 6.dp))
+        if (action != null && onAction != null) TextButton(onClick = onAction, modifier = Modifier.heightIn(min = 44.dp)) {
+            Text(action, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/** Full-width centred message with one acid action, for empty and off states. */
+@Composable
+private fun CentreCard(title: String, text: String, action: String, onAction: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth().padding(horizontal = 32.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
+        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Text(text, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(6.dp))
+        Box(Modifier.heightIn(min = 52.dp).clip(MoshShapes.Pill).background(MaterialTheme.colorScheme.primary)
+            .clickable(role = Role.Button, onClick = onAction).padding(horizontal = 28.dp), contentAlignment = Alignment.Center) {
+            Text(action, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onPrimary)
+        }
+    }
+}
+
+/** True when the phone's animator scale is off, so the sweep and pings stay still. */
+@Composable
+private fun reducedMotion(): Boolean {
+    val context = LocalContext.current
+    return remember {
+        android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
+}
+
+private data class Blip(val id: String, val name: String, val color: Color, val distanceM: Double, val bearingDeg: Double,
+                        val stale: Boolean, val place: Boolean)
+
+/**
+ * The design's compass: rings at 50, 200 and 600 m, a sweep, the way the phone faces at the top,
+ * you in the middle and each friend placed by direction and distance. Tap someone for an arrow.
+ */
+@Composable
+private fun CompassView(
+    friends: List<Friend>, locations: Map<String, LocationUpdate>, me: LocationUpdate?, meeting: MeetingPoint?, now: Long,
+    locationOn: Boolean, turnOnLocation: () -> Unit, onAddFriend: () -> Unit, onPick: (String) -> Unit,
+) {
+    val mates = friends.filter { it.status == FriendStatus.FRIEND }
+    when {
+        !locationOn -> {
+            CentreCard("Your location is off", "The compass needs it to show which way your friends are.",
+                "Turn on location", turnOnLocation, Modifier.fillMaxSize())
+            return
+        }
+        friends.isEmpty() && meeting == null -> {
+            CentreCard("Nobody to find yet", "Friends appear here once you've added each other.", "Add a friend", onAddFriend,
+                Modifier.fillMaxSize())
+            return
+        }
+        me == null -> {
+            Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center) {
+                Text("Finding where you are…", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("Stand in the open for a moment. The compass appears once your phone has a GPS fix.", fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            }
+            return
+        }
+    }
+    val my = me!!
+    val compass = rememberHeading()
+    val heading = compass.headingDeg
+    val blips = mates.mapNotNull { f ->
+        val l = locations[f.peerID] ?: return@mapNotNull null
+        Blip(f.peerID, f.displayName, avatarColor(f.peerID), distanceM(my.lat, my.lon, l.lat, l.lon),
+            com.bitchat.android.mosh.bearingDeg(my.lat, my.lon, l.lat, l.lon), stale = now - l.takenAtMs > 600_000, place = false)
+    } + listOfNotNull(meeting?.let {
+        Blip(MEETING, "Meeting point", MoshColors.Acid, distanceM(my.lat, my.lon, it.lat, it.lon),
+            com.bitchat.android.mosh.bearingDeg(my.lat, my.lon, it.lat, it.lon), stale = false, place = true)
+    })
+    val off = friends.filter { f -> f.status != FriendStatus.FRIEND || locations[f.peerID] == null }.map { f ->
+        f.displayName + if (f.status != FriendStatus.FRIEND) " (hasn't added you yet)" else " (no location yet)"
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Radar(blips, heading ?: 0.0, onPick)
+        Spacer(Modifier.height(6.dp))
+        Text(if (heading != null) "Phone facing ${compassWords(heading)}" else "Top of the circle is north",
+            fontSize = 17.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Text(
+            when {
+                heading != null -> "Turn with your phone. Tap someone to get an arrow to them."
+                compass.available -> "Hold your phone flat to turn the compass with you. Tap someone to get an arrow to them."
+                else -> "No compass on this phone. Tap someone to get an arrow to them."
+            },
+            fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+        )
+        if (compass.needsCalibration) {
+            Text("Compass unsure: move your phone in a figure of 8.", fontSize = 14.sp, color = MoshColors.Amber,
+                textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+        }
+        if (off.isNotEmpty()) {
+            Text("Not on the compass: ${off.joinToString(", ")}", fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+        }
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun Radar(blips: List<Blip>, headingDeg: Double, onPick: (String) -> Unit) {
+    val reduce = reducedMotion()
+    val line = MaterialTheme.colorScheme.outlineVariant
+    val soft = MaterialTheme.colorScheme.onSurfaceVariant
+    val bg = MaterialTheme.colorScheme.background
+    val accent = MaterialTheme.colorScheme.primary
+    val spin = androidx.compose.animation.core.rememberInfiniteTransition(label = "sweep")
+    val sweep by spin.animateFloat(0f, if (reduce) 0f else 360f,
+        androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(4_000, easing = androidx.compose.animation.core.LinearEasing)),
+        label = "sweepAngle")
+    val ping by spin.animateFloat(0f, if (reduce) 0f else 1f,
+        androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1_800, easing = androidx.compose.animation.core.LinearEasing)),
+        label = "ping")
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val side = minOf(maxWidth, 330.dp)
+        val k = side.value / 330f
+        Box(Modifier.size(side).semantics { contentDescription = "Compass: friends around you. The top is the way your phone is facing." }) {
+            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                val c = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2)
+                val outer = 150.dp.toPx() * k
+                listOf(50.0, 200.0, 600.0).forEach { d ->
+                    drawCircle(line, radius = (radarFraction(d) * outer).toFloat(), center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                }
+                // Sweep: a soft acid tail behind the leading edge, turning once every four seconds.
+                rotateDraw(sweep - 90f, c) {
+                    drawCircle(androidx.compose.ui.graphics.Brush.sweepGradient(
+                        0f to Color.Transparent, 290f / 360f to Color.Transparent, 1f to accent.copy(alpha = 0.33f), center = c),
+                        radius = outer, center = c)
+                }
+                // Heading line from the top edge to you, with a pointer at the top.
+                drawLine(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(accent, Color.Transparent), startY = 0f, endY = c.y),
+                    androidx.compose.ui.geometry.Offset(c.x, 0f), c, strokeWidth = 2.dp.toPx())
+                val tri = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(c.x, -2.dp.toPx()); lineTo(c.x + 8.dp.toPx(), 10.dp.toPx()); lineTo(c.x - 8.dp.toPx(), 10.dp.toPx()); close()
+                }
+                drawPath(tri, accent)
+                // You: cyan dot with a dark ring and a halo.
+                drawCircle(MoshColors.Cyan.copy(alpha = 0.22f), radius = 18.dp.toPx(), center = c)
+                drawCircle(bg, radius = 10.dp.toPx(), center = c)
+                drawCircle(MoshColors.Cyan, radius = 7.dp.toPx(), center = c)
+            }
+            listOf(50.0 to "50 m", 200.0 to "200 m", 600.0 to "600 m").forEach { (d, label) ->
+                val r = (radarFraction(d) * 150 * k).toFloat()
+                Text(label, fontSize = 12.sp, color = soft,
+                    modifier = Modifier.offset(x = (172 * k).dp, y = (165 * k - r + 2).dp))
+            }
+            blips.forEach { b ->
+                val r = radarFraction(b.distanceM) * 150 * k
+                val a = Math.toRadians(b.bearingDeg - headingDeg)
+                val x = 165 * k + r * Math.sin(a); val y = 165 * k - r * Math.cos(a)
+                val dist = (if (b.stale) "~" else "") + metres(b.distanceM)
+                Column(
+                    Modifier.offset(x = (x - 60).dp, y = (y - 24).dp).width(120.dp)
+                        .alpha(if (b.stale) 0.5f else 1f)
+                        .clickable(role = Role.Button, onClickLabel = "Get an arrow") { onPick(b.id) }
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "${b.name}, $dist, " + directionWords(b.bearingDeg - headingDeg) +
+                                (if (b.stale) ", old location" else "") + ". Get an arrow."
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                        val shape = if (b.place) RoundedCornerShape(8.dp) else CircleShape
+                        if (!b.stale && !b.place) {
+                            Box(Modifier.size(40.dp).graphicsLayer { scaleX = 1f + ping * 0.8f; scaleY = 1f + ping * 0.8f; alpha = 1f - ping }
+                                .border(2.dp, b.color, shape))
+                        }
+                        Box(Modifier.size(40.dp).rotate(if (b.place) 45f else 0f).clip(shape).background(b.color).border(3.dp, bg, shape),
+                            contentAlignment = Alignment.Center) {
+                            Text(initials(if (b.place) "M P" else b.name), color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                                modifier = Modifier.rotate(if (b.place) -45f else 0f))
+                        }
+                    }
+                    Text(if (b.place) "Meeting point" else "${b.name} · $dist", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 6.dp))
+                }
+            }
+        }
+    }
+}
+
+private fun initials(name: String) = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2)
+    .joinToString("") { it.first().uppercase() }.ifEmpty { "?" }.take(2)
 
 /** [stroke] is white for whoever is being found, so they stand out among several friends. */
 private data class Pin(val lat: Double, val lon: Double, val color: String, val radius: Float, val stroke: String = "#000000")
@@ -359,16 +652,14 @@ private fun FindPill(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun FriendList(friends: List<Friend>, locations: Map<String, LocationUpdate>, lastHeard: Map<String, Long>, me: LocationUpdate?, now: Long, onPick: (String) -> Unit) {
+private fun FriendList(friends: List<Friend>, locations: Map<String, LocationUpdate>, lastHeard: Map<String, Long>, me: LocationUpdate?,
+                       now: Long, onAddFriend: () -> Unit, onPick: (String) -> Unit) {
     if (friends.isEmpty()) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Nobody to find yet", fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            Text("Add friends from Chats with the + button.", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        CentreCard("Nobody to find yet", "Friends appear here once you've added each other.", "Add a friend", onAddFriend,
+            Modifier.padding(vertical = 40.dp))
         return
     }
-    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 280.dp)) {
+    LazyColumn(Modifier.fillMaxSize()) {
         items(friends, key = { it.peerID }) { f ->
             val l = locations[f.peerID]
             val heard = lastHeard[f.peerID]
@@ -392,7 +683,7 @@ private fun FriendList(friends: List<Friend>, locations: Map<String, LocationUpd
                         Text(if (heard == null) "Not heard from yet" else "Last heard ${ago(now - heard)}", fontSize = 13.sp, color = MoshColors.Amber)
                     }
                 }
-                FindPill("Find") { onPick(f.peerID) }
+                if (f.status == FriendStatus.FRIEND) FindPill("Find") { onPick(f.peerID) }
             }
         }
     }
@@ -433,80 +724,156 @@ private fun MeetingRow(mp: MeetingPoint, me: LocationUpdate?, onFind: () -> Unit
 
 /** The design's huge distance: number in 88sp ExtraBold, unit smaller and grey. */
 @Composable
-private fun BigDistance(d: Double) {
+private fun BigDistance(d: Double, approx: Boolean = false) {
     val (num, unit) = metres(d).split(" ").let { it[0] to it.getOrElse(1) { "" } }
     Text(buildAnnotatedString {
-        append(num)
+        append((if (approx) "~" else "") + num)
         withStyle(SpanStyle(fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)) { append(" $unit") }
     }, fontSize = 88.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 88.sp, letterSpacing = (-2).sp)
 }
 
+/**
+ * Finding one person or the meeting point, as in the design: a dot-field arrow in their colour, the
+ * distance huge, the direction in words, how old their location is, then Message and Buzz me at 20 m.
+ */
 @Composable
-private fun GuidancePanel(title: String, me: LocationUpdate?, target: LocationUpdate?, now: Long, arrowColor: Color,
-                          showAge: Boolean = true, onClose: () -> Unit) {
+private fun FindingView(
+    title: String, me: LocationUpdate?, target: LocationUpdate?, now: Long, color: Color,
+    locationOn: Boolean, turnOnLocation: () -> Unit, name: String = "", place: Boolean = false,
+    onMessage: (() -> Unit)?, onBack: () -> Unit,
+) {
     val compass = rememberHeading()
     val soft = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to list") }
+    val context = LocalContext.current
+    var buzz by remember { mutableStateOf(false) }
+    val stale = !place && target != null && now - target.takenAtMs > 600_000
+    val g = if (me != null && target != null) guidance(me, target) else null
+    val dist = when (g) { is Guidance.Arrow -> g.distanceM; Guidance.CloseLookAround -> 0.0; null -> null }
+    val close = g == Guidance.CloseLookAround || (dist != null && dist <= 20)
+    // Buzz once when they come within 20 m, then switch off.
+    LaunchedEffect(buzz, close) {
+        if (buzz && close && !stale) { vibrate(context); buzz = false }
+    }
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            }
             Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f))
         }
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            when {
-                target == null -> Text("No location from them yet.", fontSize = 17.sp, color = soft)
-                me == null -> Text("Waiting for your GPS…", fontSize = 17.sp, color = soft)
-                else -> when (val g = guidance(me, target)) {
-                    Guidance.CloseLookAround -> {
+        when {
+            !locationOn -> CentreCard("Your location is off",
+                "Turn it on so MoshGrid can point you to ${if (place) "the meeting point" else name}.",
+                "Turn on location", turnOnLocation, Modifier.weight(1f))
+            target == null -> CentreCard("No location from $name yet",
+                "It appears once they're in reach and sharing. Send a message and it arrives when they are.",
+                "Message $name", { onMessage?.invoke() }, Modifier.weight(1f))
+            me == null -> Column(Modifier.weight(1f).fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center) {
+                Text("Finding where you are…", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("The arrow appears once your phone has a GPS fix.", fontSize = 16.sp, color = soft, textAlign = TextAlign.Center)
+            }
+            else -> {
+                val bearing = com.bitchat.android.mosh.bearingDeg(me.lat, me.lon, target.lat, target.lon)
+                val heading = compass.headingDeg
+                val rel = if (heading != null) bearing - heading else bearing
+                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    DotArrow(if (close) null else rel, color, dim = stale,
+                        description = if (close) "Close by" else "Arrow pointing ${directionWords(rel)}, ${metres(dist ?: 0.0)}")
+                    Spacer(Modifier.height(18.dp))
+                    if (g == Guidance.CloseLookAround) {
                         Text("Close", fontSize = 88.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 88.sp)
-                        Box(Modifier.clip(MoshShapes.Card).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                    } else BigDistance(dist ?: 0.0, approx = stale)
+                    Text(
+                        when {
+                            stale -> "Last known direction"
+                            close -> "Right around you"
+                            heading != null -> directionWords(rel).replaceFirstChar { it.uppercase() }
+                            else -> "To the ${compassWords(bearing)}"
+                        },
+                        fontSize = 18.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp),
+                    )
+                    Text(
+                        when {
+                            place -> "Set on the map"
+                            stale -> "$name's location is ${ago(now - target.takenAtMs).removeSuffix(" ago")} old. $name may have moved."
+                            else -> "Location from ${ago(now - target.takenAtMs)}"
+                        },
+                        fontSize = 15.sp, color = if (stale) MoshColors.Amber else soft, textAlign = TextAlign.Center,
+                    )
+                    if (heading == null && !close) {
+                        Text(if (compass.available) "Hold your phone flat to point the arrow the way you face."
+                            else "No compass on this phone: the arrow points as if up is north.",
+                            fontSize = 14.sp, color = soft, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+                    } else if (compass.needsCalibration && !close) {
+                        Text("Compass unsure: move your phone in a figure of 8.", fontSize = 14.sp, color = MoshColors.Amber,
+                            textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+                    }
+                    if (close) {
+                        Box(Modifier.padding(top = 16.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
                             .padding(horizontal = 16.dp, vertical = 12.dp)) {
-                            Text("GPS can't tell the last few metres. Look around, or call out.", fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
-                        }
-                    }
-                    is Guidance.Arrow -> {
-                        val heading = compass.headingDeg
-                        if (heading != null) {
-                            val rel = g.bearingDeg - heading
-                            Text("↑", fontSize = 72.sp, fontWeight = FontWeight.ExtraBold, color = arrowColor, modifier = Modifier.rotate(rel.toFloat()))
-                            BigDistance(g.distanceM)
-                            Text(directionWords(rel).replaceFirstChar { it.uppercase() }, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                            if (compass.needsCalibration) {
-                                Text("Compass unsure: move your phone in a figure of 8.", fontSize = 14.sp, color = MoshColors.Amber,
-                                    textAlign = TextAlign.Center)
-                            }
-                        } else {
-                            // No compass: the arrow is relative to north, and the words say so.
-                            Text("↑", fontSize = 72.sp, fontWeight = FontWeight.ExtraBold, color = arrowColor, modifier = Modifier.rotate(g.bearingDeg.toFloat()))
-                            BigDistance(g.distanceM)
-                            Text("To the ${compassWords(g.bearingDeg)}", fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                            Text(if (compass.available) "Hold your phone still to point the arrow." else "No compass on this phone: the arrow points as if up is north.",
-                                fontSize = 14.sp, color = soft, textAlign = TextAlign.Center)
+                            Text(if (place) "You're there." else "Within 20 m. GPS can't tell the last few metres: look up and wave.",
+                                fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
                         }
                     }
                 }
             }
         }
-        if (showAge && target != null) {
-            val stale = now - target.takenAtMs > 600_000
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MoshTile("Their location", Modifier.weight(1f)) {
-                    Text(ago(now - target.takenAtMs).replaceFirstChar { it.uppercase() }, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
-                        color = if (stale) MoshColors.Amber else MaterialTheme.colorScheme.onSurface)
-                    if (stale) Text("They may have moved", fontSize = 13.sp, color = MoshColors.Amber)
+        if (locationOn && target != null) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (onMessage != null) {
+                    PillButton(if (stale) "Ask $name for an update" else "Message", MaterialTheme.colorScheme.surface,
+                        MaterialTheme.colorScheme.onSurface, Modifier.weight(1f), onMessage)
                 }
-                MoshTile("Accurate to", Modifier.weight(1f)) {
-                    Text("±${target.accuracyM.toInt()} m", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                if (!stale && !close) {
+                    PillButton(if (buzz) "Will buzz at 20 m" else "Buzz me at 20 m",
+                        if (buzz) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                        if (buzz) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                        Modifier.weight(1f).semantics { stateDescription = if (buzz) "On" else "Off" }) { buzz = !buzz }
                 }
             }
-        }
-        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 48.dp).clip(MoshShapes.Pill)
-            .background(MaterialTheme.colorScheme.surface).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
-            Text("Back to list", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
     }
+}
+
+@Composable
+private fun PillButton(label: String, bg: Color, fg: Color, modifier: Modifier, onClick: () -> Unit) {
+    Box(modifier.height(52.dp).clip(MoshShapes.Pill).background(bg).clickable(role = Role.Button, onClick = onClick)
+        .padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+        Text(label, color = fg, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, textAlign = TextAlign.Center)
+    }
+}
+
+/** The 17 by 17 dot field; [relativeDeg] null lights only the centre (they are close). */
+@Composable
+private fun DotArrow(relativeDeg: Double?, color: Color, dim: Boolean, description: String) {
+    val dots = remember(relativeDeg?.let { Math.round(it / 2) }) { dotField(relativeDeg ?: 0.0) }
+    val grey = Color(0xFF8A8A8A)
+    val ink = MaterialTheme.colorScheme.onSurface
+    androidx.compose.foundation.Canvas(Modifier.padding(top = 12.dp).size(300.dp)
+        .semantics { contentDescription = description }) {
+        val cell = size.width / 17
+        dots.forEachIndexed { i, d ->
+            if (d.alpha == 0f) return@forEachIndexed
+            val cx = (i % 17 + 0.5f) * cell; val cy = (i / 17 + 0.5f) * cell
+            val (c, a) = when {
+                d.centre -> ink to 1f
+                relativeDeg != null && d.lit -> color to d.alpha * (if (dim) 0.4f else 1f)
+                else -> grey to 0.22f
+            }
+            drawCircle(c.copy(alpha = a), radius = (if (d.centre) 7.dp else 4.5.dp).toPx(),
+                center = androidx.compose.ui.geometry.Offset(cx, cy))
+        }
+    }
+}
+
+@Suppress("DEPRECATION")
+private fun vibrate(context: Context) {
+    val v = context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator ?: return
+    if (android.os.Build.VERSION.SDK_INT >= 26) {
+        v.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1))
+    } else v.vibrate(longArrayOf(0, 300, 150, 300), -1)
 }
 
 private data class Compass(val headingDeg: Double?, val available: Boolean, val needsCalibration: Boolean)

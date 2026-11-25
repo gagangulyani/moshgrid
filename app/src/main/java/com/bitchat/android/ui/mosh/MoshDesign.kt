@@ -55,13 +55,15 @@ object MoshShapes {
     val Pill = RoundedCornerShape(50)
 }
 
+/** A friend's colour, the same everywhere: avatar, compass blip and Find arrow. */
+fun avatarColor(key: String): Color = MoshColors.Avatars[Math.floorMod(key.hashCode(), MoshColors.Avatars.size)]
+
 /** Round avatar with initials, coloured per friend. */
 @Composable
 fun MoshAvatar(name: String, key: String, size: Dp = 50.dp) {
     val initials = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2)
         .joinToString("") { it.first().uppercase() }.ifEmpty { "?" }.take(2)
-    val color = MoshColors.Avatars[Math.floorMod(key.hashCode(), MoshColors.Avatars.size)]
-    Box(Modifier.size(size).clip(CircleShape).background(color), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(size).clip(CircleShape).background(avatarColor(key)), contentAlignment = Alignment.Center) {
         Text(initials, color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = (size.value * 0.3f).sp)
     }
 }

@@ -82,6 +82,7 @@ object TestHookDriver {
             "mosh_befriend" -> moshBefriend(context, intent.requiredString("peer"), intent.getStringExtra("name") ?: "Test friend", intent.getBooleanExtra("exchange_key", false) || intent.getStringExtra("exchange_key") == "true")
             "mosh_send" -> moshSend(context, intent.requiredString("peer"), intent.requiredString("kind"), intent.getStringExtra("token") ?: "t")
             "mosh_state" -> moshState(context, intent.requiredString("peer"))
+            "mosh_demo" -> moshDemo(context, intent.getStringExtra("lat")?.toDoubleOrNull() ?: 28.4689, intent.getStringExtra("lon")?.toDoubleOrNull() ?: 77.0664, intent.getStringExtra("help") == "true")
             "mosh_help" -> moshHelp(context, intent.requiredString("action"))
             "test_relay" -> testRelay(context, intent.getStringExtra("url").orEmpty())
             "net" -> net(context)
@@ -333,6 +334,42 @@ object TestHookDriver {
         if (exchangeKey) com.bitchat.android.services.MessageRouter.tryGetInstance()?.sendFavoriteNotification(peerID, true)
         return ok("mosh_befriend").put("peer", peerID)
             .put("is_friend", com.bitchat.android.mosh.MoshRuntime.friends.isFriend(peerID))
+    }
+
+    /**
+     * Debug only: synthetic friends with synthetic positions around a public venue point, for
+     * screenshots and UI checks without a second phone. Keys are random; names are made up.
+     */
+    private fun moshDemo(context: Context, lat: Double, lon: Double, help: Boolean): JSONObject {
+        FavoritesPersistenceService.initialize(context)
+        val identity = com.bitchat.android.identity.SecureIdentityStateManager(context)
+        com.bitchat.android.mosh.MoshRuntime.init(context)
+        val now = System.currentTimeMillis()
+        val made = org.json.JSONArray()
+        // name, metres north, metres east, minutes since the position, they scanned us back
+        listOf(Triple("Priya", 60.0 to 25.0, 1 to true), Triple("Jo", -110.0 to 70.0, 3 to true),
+            Triple("Sam", 420.0 to -380.0, 14 to true), Triple("Kai", 0.0 to 0.0, 0 to false)).forEach { (name, off, meta) ->
+            val key = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+            FavoritesPersistenceService.shared.updateFavoriteStatus(key, name, true)
+            FavoritesPersistenceService.shared.updatePeerFavoritedUs(key, meta.second)
+            identity.setVerifiedFingerprint(identity.generateFingerprint(key), true)
+            val peer = com.bitchat.android.noise.NoisePeerIdentity.derivePeerID(key) ?: return@forEach
+            if (meta.second) {
+                val dLat = off.first / 111_320.0
+                val dLon = off.second / (111_320.0 * Math.cos(Math.toRadians(lat)))
+                com.bitchat.android.mosh.MoshRuntime.store.apply(peer,
+                    com.bitchat.android.mosh.LocationUpdate(lat + dLat, lon + dLon, 6f, now - meta.first * 60_000L, 70))
+            }
+            made.put(JSONObject().put("name", name).put("peer", peer))
+            if (help && name == "Priya") {
+                val dLat = off.first / 111_320.0
+                val dLon = off.second / (111_320.0 * Math.cos(Math.toRadians(lat)))
+                com.bitchat.android.mosh.MoshRuntime.store.apply(peer,
+                    com.bitchat.android.mosh.HelpAlert("demo-help", lat + dLat, lon + dLon, 6f, "Red cap, near the sound desk", now))
+            }
+        }
+        com.bitchat.android.mosh.MoshRuntime.updateMyLocation(com.bitchat.android.mosh.LocationUpdate(lat, lon, 5f, now, 80))
+        return ok("mosh_demo").put("friends", made)
     }
 
     private fun moshSend(context: Context, peerID: String, kind: String, token: String): JSONObject {

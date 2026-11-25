@@ -36,6 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -1775,7 +1778,9 @@ fun PrivateChatSheet(
     isPresented: Boolean,
     peerID: String,
     viewModel: ChatViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** MoshGrid: opens Find on this friend; shown as a Find pill when they share a location. */
+    onFind: ((String) -> Unit)? = null,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val privateChats by viewModel.privateChats.collectAsStateWithLifecycle()
@@ -1909,6 +1914,21 @@ fun PrivateChatSheet(
         skipPartiallyExpanded = true
     )
 
+    // MoshGrid: where the friend is, as in the design's chat header ("64 m away · 2 min ago").
+    val moshFriend = remember(peerID, favoritePeers) { com.bitchat.android.mosh.MoshRuntime.friendFor(peerID) }
+    val moshLocations by com.bitchat.android.mosh.MoshRuntime.store.locations.collectAsStateWithLifecycle()
+    val moshMe by com.bitchat.android.mosh.MoshRuntime.myLocation.collectAsStateWithLifecycle()
+    val moshLoc = moshFriend?.let { moshLocations[it.peerID] }
+    val moshWhere = moshLoc?.let { l ->
+        val mins = ((System.currentTimeMillis() - l.takenAtMs).coerceAtLeast(0) / 60_000)
+        val age = if (mins < 1) "just now" else if (mins < 60) "$mins min ago" else "${mins / 60} h ago"
+        val away = moshMe?.let { m ->
+            val d = com.bitchat.android.mosh.distanceM(m.lat, m.lon, l.lat, l.lon)
+            (if (d < 1000) "${d.toInt()} m" else "%.1f km".format(d / 1000)) + " away · "
+        } ?: ""
+        away + age
+    }
+
     if (isPresented) {
         BitchatBottomSheet(
             onDismissRequest = onDismiss,
@@ -1926,7 +1946,9 @@ fun PrivateChatSheet(
                     var forceScrollToBottom by remember { mutableStateOf(false) }
                     var isScrolledUp by remember { mutableStateOf(false) }
 
-                    MessagesList(
+                    if (messages.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text("No messages here. Say hi.", color = colorScheme.onSurfaceVariant, fontSize = 15.sp)
+                    } else MessagesList(
                         messages = messages,
                         currentUserNickname = nickname,
                         meshService = viewModel.meshServiceFacade,
@@ -1998,6 +2020,7 @@ fun PrivateChatSheet(
                 // Header. Built from the same tokens as the main chat header rather than a
                 // TopAppBar, so moving between the timeline and a conversation does not shift the
                 // bar's height, insets or type.
+                val dismiss = LocalSheetDismiss.current
                 Surface(
                     modifier = Modifier.align(Alignment.TopCenter),
                     color = colorScheme.background
@@ -2016,12 +2039,25 @@ fun PrivateChatSheet(
                         },
                         title = titleText,
                         avatarKey = peerID,
-                        subtitle = when {
+                        subtitle = moshWhere ?: when {
                             isConnected -> "In reach"
                             isNostrPeer || isNostrReachableFavorite -> "Over the internet"
                             else -> "Not in reach"
-                        }
+                        },
+                        onBack = { dismiss?.invoke() ?: onDismiss() },
                     ) {
+                        if (moshFriend != null && moshLoc != null && onFind != null) {
+                            Box(
+                                Modifier.padding(end = 4.dp).heightIn(min = 40.dp)
+                                    .clip(com.bitchat.android.ui.mosh.MoshShapes.Pill)
+                                    .background(colorScheme.primary.copy(alpha = 0.16f))
+                                    .clickable { onFind(moshFriend.peerID) }
+                                    .padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("Find", color = colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            }
+                        }
                         // MoshGrid: friends are made by scanning QR codes; a star tap here would
                         // silently unfriend someone, so it is hidden.
                         if (com.bitchat.android.mosh.MoshFeatures.FAVORITE_STAR) ConversationHeaderAction(
@@ -2081,8 +2117,6 @@ fun PrivateChatSheet(
                             }
                         }
 
-                        val dismiss = LocalSheetDismiss.current
-                        CloseButton(onClick = { dismiss?.invoke() ?: onDismiss() })
                     }
                 }
             }
