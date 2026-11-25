@@ -1,8 +1,42 @@
 # MoshGrid
 
-Find and message your friends at festivals when the phone network dies. A friends-only fork of bitchat-android (GPL-3.0, see NOTICE).
+Find and message your friends at gigs and festivals, even when the phone network dies.
 
-Design: `docs/superpowers/specs/2026-11-22-moshgrid-bitchat-fork-design.md`. Plan: `docs/superpowers/plans/2026-11-22-moshgrid-fork-v1.md`.
+MoshGrid phones talk to each other over Bluetooth, passing messages along from phone to phone, and use the internet too whenever there is any. You add friends in person by scanning QR codes, see where they are on a map, drop a meeting point, and press Help to send your location to everyone until it gets through.
+
+Download and install: **https://moshgrid.vercel.app** (Android 8 and newer).
+
+## How it works
+
+- **Friends only.** Only people you have scanned can see your location or message you.
+- **Bluetooth mesh.** Messages hop through other MoshGrid phones in the crowd. No signal needed.
+- **Internet when available.** Messages are end-to-end encrypted (NIP-17 gift wraps) and passed through Nostr relays that cannot read them. MoshGrid runs its own relay first, with public relays as fallbacks.
+- **No accounts, no ads.** Crash reports are off unless you turn them on; if you do, they go to MoshGrid's own server with no location, messages, names or friends in them.
+- **Not an emergency service.** In danger, find venue staff or call 112.
+
+## Build
+
+Requires JDK 21 and the Android SDK versions in `gradle/libs.versions.toml`.
+
+```sh
+./gradlew :app:assembleDebug
+./gradlew testDebugUnitTest
+```
+
+Release builds are signed with a key that is not in this repository. Crash reporting is disabled unless you pass `-PsentryDsn=...`. See `AGENTS.md` for project conventions and `docs/` for protocol specs and the release guide.
+
+## Verify a download
+
+The website lists the SHA-256 of each APK and of the signing certificate. Compare them with:
+
+```sh
+shasum -a 256 MoshGrid-1.0.0.apk
+apksigner verify --print-certs MoshGrid-1.0.0.apk
+```
+
+## Licence and credit
+
+MoshGrid is free software under the GNU General Public License v3 (see `LICENSE.md` and `NOTICE`). It is a fork of [bitchat-android](https://github.com/permissionlesstech/bitchat-android) by Permissionless Tech and contributors, which provides the Bluetooth mesh, Noise encryption and Nostr transport. MoshGrid adds friend finding, Help, meeting points and offline venue maps.
 
 ---
 
