@@ -399,7 +399,7 @@ class ChatUIUtilsTest {
     // MARK: - Sender label
 
     @Test
-    fun `sender label drops angle brackets and dims the hash suffix`() {
+    fun `sender label drops angle brackets and the at sign and dims the hash suffix`() {
         val sender = formatTextMessageSender(
             message = message("hi", sender = "carol#04af"),
             currentUserNickname = "bob",
@@ -407,10 +407,10 @@ class ChatUIUtilsTest {
             palette = palette,
         )
 
-        assertEquals("@carol #04af", sender.text)
+        assertEquals("carol #04af", sender.text)
 
         val suffixSpan = sender.spanStyles.first { sender.text.substring(it.start, it.end) == "#04af" }
-        val nameSpan = sender.spanStyles.first { sender.text.substring(it.start, it.end) == "@carol" }
+        val nameSpan = sender.spanStyles.first { sender.text.substring(it.start, it.end) == "carol" }
         assertNotNull(suffixSpan.item.color)
         assertEquals(14.sp, nameSpan.item.fontSize)
         assertEquals(FontWeight.SemiBold, nameSpan.item.fontWeight)

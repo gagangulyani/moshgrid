@@ -8,6 +8,10 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Animatable
@@ -61,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -946,17 +951,8 @@ private fun BubbleTextMessageLayout(
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
 
-    val authorColor = remember(message, isSelf, palette) {
-        if (isSelf) palette.accentOrange else colorForPeer(peerIdentityForMessage(message), palette)
-    }
-
-    val corner = ChatVisualTokens.BubbleCornerRadius
-    val tail = ChatVisualTokens.BubbleTailRadius
-    val bubbleShape = if (isSelf) {
-        RoundedCornerShape(topStart = corner, topEnd = corner, bottomEnd = tail, bottomStart = corner)
-    } else {
-        RoundedCornerShape(topStart = corner, topEnd = corner, bottomEnd = corner, bottomStart = tail)
-    }
+    val bubbleColor = moshBubbleColor(isSelf)
+    val bubbleShape = MoshBubbleShape
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -968,7 +964,7 @@ private fun BubbleTextMessageLayout(
             val maxBubbleWidth = maxWidth * ChatVisualTokens.BubbleMaxWidthFraction
             val density = LocalDensity.current
             val textCapPx = with(density) {
-                (maxBubbleWidth - ChatVisualTokens.BubblePaddingHorizontal * 2 - 2.dp).toPx()
+                (maxBubbleWidth - 14.dp * 2 - 2.dp).toPx()
             }
             var bodyLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
             var clusterSize by remember { mutableStateOf(IntSize.Zero) }
@@ -1000,19 +996,8 @@ private fun BubbleTextMessageLayout(
                 modifier = Modifier
                     .align(if (isSelf) Alignment.CenterEnd else Alignment.CenterStart)
                     .widthIn(max = maxBubbleWidth)
-                    .border(
-                        width = 1.dp,
-                        color = authorColor.copy(alpha = ChatVisualTokens.BubbleBorderAlpha),
-                        shape = bubbleShape
-                    )
-                    .background(
-                        color = authorColor.copy(alpha = ChatVisualTokens.BubbleBackgroundAlpha),
-                        shape = bubbleShape
-                    )
-                    .padding(
-                        horizontal = ChatVisualTokens.BubblePaddingHorizontal,
-                        vertical = ChatVisualTokens.BubblePaddingVertical,
-                    )
+                    .background(color = bubbleColor, shape = bubbleShape)
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     // The sender's name heads the first bubble of their run, like classic group
@@ -1093,18 +1078,34 @@ private fun BubbleTextMessageLayout(
                                     text = formatTextMessageMetadata(message, timeFormatter),
                                     fontFamily = BitchatFontFamily,
                                 )
-                                if (message.isPrivate) {
-                                    message.deliveryStatus?.let { status ->
-                                        Spacer(Modifier.width(4.dp))
-                                        DeliveryStatusIcon(status = status, sentAtMs = message.timestamp.time)
-                                    }
-                                }
                             }
                         }
                     }
                 }
             }
         }
+        // MoshGrid: status sits under your own bubble as an icon and a word, as in the design.
+        if (isSelf && message.isPrivate) {
+            message.deliveryStatus?.let { status ->
+                Box(Modifier.padding(top = 3.dp, end = 4.dp)) {
+                    DeliveryStatusIcon(status = status, sentAtMs = message.timestamp.time, showLabel = true)
+                }
+            }
+        }
+    }
+}
+
+/** MoshGrid bubble: 18dp round corners, no border. */
+internal val MoshBubbleShape = RoundedCornerShape(18.dp)
+
+/** Yours: a soft acid tint over the background. Theirs: the surface tile colour. */
+@Composable
+internal fun moshBubbleColor(isSelf: Boolean): Color {
+    val colorScheme = MaterialTheme.colorScheme
+    return if (isSelf) {
+        androidx.compose.ui.graphics.lerp(colorScheme.background, colorScheme.primary, 0.16f)
+    } else {
+        colorScheme.surface
     }
 }
 
@@ -1266,11 +1267,15 @@ private fun redeemCashu(context: Context, token: String, preferWallet: Boolean) 
  * app's primary green rather than a separate accent. [status] == null yields the all-grey
  * baseline used while a message is still being sent.
  */
+/** Waiting colour from the design (amber), readable on both themes. */
+private val MoshAmber = com.bitchat.android.ui.mosh.MoshColors.Amber
+
 private fun deliveryCheckColors(status: DeliveryStatus?, colorScheme: ColorScheme, sentAtMs: Long = 0L, nowMs: Long = 0L): Pair<Color, Color> {
     // MoshGrid ticks: one grey = sent, two grey = delivered, two blue = seen, red = not confirmed.
-    val faint = colorScheme.onSurface.copy(alpha = 0.2f)
-    val grey = colorScheme.onSurface.copy(alpha = 0.6f)
-    val seen = colorScheme.secondary
+    // Amber reads on black; on a light background a darker amber keeps contrast.
+    val faint = if (colorScheme.background.luminance() < 0.5f) MoshAmber else Color(0xFF8A5A00)
+    val grey = colorScheme.onSurfaceVariant
+    val seen = colorScheme.primary
     val hidden = Color.Transparent
     return when (com.bitchat.android.mosh.tickFor(status, sentAtMs = sentAtMs, nowMs = nowMs)) {
         com.bitchat.android.mosh.Tick.CLOCK -> faint to faint
@@ -1291,7 +1296,7 @@ private fun deliveryCheckRank(status: DeliveryStatus): Int = when (status) {
 }
 
 @Composable
-fun DeliveryStatusIcon(status: DeliveryStatus, sentAtMs: Long = 0L) {
+fun DeliveryStatusIcon(status: DeliveryStatus, sentAtMs: Long = 0L, showLabel: Boolean = false) {
     val colorScheme = MaterialTheme.colorScheme
     // MoshGrid: a message still "sent" 10 minutes later turns into "Not confirmed".
     var nowMs by remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
@@ -1328,29 +1333,37 @@ fun DeliveryStatusIcon(status: DeliveryStatus, sentAtMs: Long = 0L) {
         }
     }
 
-    val text = remember(first, second, notConfirmed) {
-        androidx.compose.ui.text.buildAnnotatedString {
-            pushStyle(androidx.compose.ui.text.SpanStyle(color = first))
-            append("✓")
-            pop()
-            pushStyle(androidx.compose.ui.text.SpanStyle(color = second))
-            append("✓")
-            pop()
-            if (notConfirmed) {
-                // MoshGrid: say what red ticks mean.
-                pushStyle(androidx.compose.ui.text.SpanStyle(color = first))
-                append(" Not confirmed")
-                pop()
-            }
-        }
+    val color = if (tick == com.bitchat.android.mosh.Tick.ONE_GREY) first else second.takeIf { it.alpha > 0f } ?: first
+    val icon = when (tick) {
+        com.bitchat.android.mosh.Tick.CLOCK -> Icons.Outlined.Schedule
+        com.bitchat.android.mosh.Tick.ONE_GREY -> Icons.Filled.Done
+        com.bitchat.android.mosh.Tick.TWO_GREY, com.bitchat.android.mosh.Tick.TWO_BLUE -> Icons.Filled.DoneAll
+        com.bitchat.android.mosh.Tick.NOT_CONFIRMED -> Icons.Outlined.ErrorOutline
     }
-    Text(
-        text = text,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Normal,
+    val word = when (tick) {
+        com.bitchat.android.mosh.Tick.CLOCK -> "Waiting to send"
+        com.bitchat.android.mosh.Tick.ONE_GREY -> "Sent"
+        com.bitchat.android.mosh.Tick.TWO_GREY -> "Delivered"
+        com.bitchat.android.mosh.Tick.TWO_BLUE -> "Seen"
+        com.bitchat.android.mosh.Tick.NOT_CONFIRMED -> if (status is DeliveryStatus.Failed) "Not sent" else "Not confirmed"
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.graphicsLayer {
             scaleX = scale.value
             scaleY = scale.value
         }
-    )
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = if (showLabel || notConfirmed) null else word,
+            tint = color,
+            modifier = Modifier.size(if (showLabel) 15.dp else 13.dp)
+        )
+        // MoshGrid: say what red ticks mean, always; other words only where there is room.
+        if (showLabel || notConfirmed) {
+            Text(text = word, fontSize = 13.sp, color = color)
+        }
+    }
 }

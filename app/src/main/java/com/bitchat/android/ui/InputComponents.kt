@@ -7,6 +7,7 @@ import com.bitchat.android.ui.theme.BitchatFontFamily
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -210,7 +211,7 @@ class CombinedVisualTransformation(private val transformations: List<VisualTrans
  * Roomy on purpose. The composer is a primary target that gets hit constantly, and the previous
  * 44.dp felt cramped once the action buttons moved inside it.
  */
-private val ComposerMinHeight = 52.dp
+private val ComposerMinHeight = 48.dp
 
 /**
  * Composer corner radius.
@@ -230,14 +231,6 @@ private val ComposerButtonDisc = 36.dp
 /** Icon size shared by the composer's glyphs. */
 internal val ComposerIconSize = 20.dp
 
-/**
- * Opacity of the composer pill.
- *
- * Not fully opaque: the message list scrolls underneath the composer, and letting a hint of it
- * through is what makes the bar read as sitting *over* the conversation rather than boxing it in.
- * Kept high enough that text in the field never loses contrast.
- */
-private const val ComposerFillAlpha = 0.88f
 
 /**
  * The shared visual treatment for every button in the composer: camera, microphone, send.
@@ -378,8 +371,8 @@ fun MessageInput(
     val borderColor by animateColorAsState(
         targetValue = when {
             isRecording -> colorScheme.error.copy(alpha = 0.65f)
-            isFocused.value -> palette.inputOutlineFocused
-            else -> palette.inputOutline
+            // MoshGrid: a plain filled pill, no outline.
+            else -> Color.Transparent
         },
         animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing),
         label = "composerBorder"
@@ -394,8 +387,7 @@ fun MessageInput(
     val containerColor by animateColorAsState(
         targetValue = when {
             isRecording -> colorScheme.surfaceVariant.copy(alpha = 0.97f)
-            else -> (if (isFocused.value) palette.inputSurfaceFocused else palette.inputSurface)
-                .copy(alpha = ComposerFillAlpha)
+            else -> colorScheme.surface
         },
         animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing),
         label = "composerContainer"
@@ -422,7 +414,7 @@ fun MessageInput(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 18.dp, end = 4.dp, top = 15.dp, bottom = 15.dp)
+                    .padding(start = 18.dp, end = 4.dp, top = 13.dp, bottom = 13.dp)
             ) {
                 // Always keep the text field mounted to retain focus and avoid IME collapse
                 BasicTextField(
@@ -433,7 +425,8 @@ fun MessageInput(
                     // type into.
                     textStyle = MaterialTheme.typography.bodyMedium.copy(
                         color = if (cashuToken == null) colorScheme.onSurface else Color.Transparent,
-                        fontFamily = BitchatFontFamily
+                        fontFamily = BitchatFontFamily,
+                        fontSize = 16.sp
                     ),
                     cursorBrush = SolidColor(
                         if (isRecording || cashuToken != null) Color.Transparent else colorScheme.onSurface
@@ -492,9 +485,10 @@ fun MessageInput(
                             selectedPrivatePeer == null && currentChannel == null && activePublicTalker != null
                         ) "$activePublicTalker is live" else stringResource(R.string.type_a_message_placeholder),
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = BitchatFontFamily
+                            fontFamily = BitchatFontFamily,
+                            fontSize = 16.sp
                         ),
-                        color = palette.textTertiary,
+                        color = colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -573,7 +567,7 @@ fun MessageInput(
                         tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
                     }
                 },
-                modifier = Modifier.padding(end = 6.dp, bottom = 6.dp),
+                modifier = Modifier.padding(end = 4.dp, bottom = 4.dp),
                 label = "composerActions"
             ) { showSend ->
                 if (showSend) {
@@ -781,28 +775,46 @@ private fun SendButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    val palette = LocalBitchatPalette.current
     val colorScheme = MaterialTheme.colorScheme
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-
-    ComposerActionSurface(
-        isActive = enabled,
-        isPressed = isPressed,
-        // Private chats and channels keep their orange identity, disc and glyph together.
-        activeColor = if (isAccented) palette.accentOrange else colorScheme.primary,
-        modifier = modifier.clickable(
-            interactionSource = interactionSource,
-            indication = null,
-            enabled = enabled
-        ) { onSend() }
-    ) { tint ->
-        Icon(
-            imageVector = Icons.Filled.ArrowUpward,
-            contentDescription = stringResource(id = R.string.send_message),
-            modifier = Modifier.size(ComposerIconSize),
-            tint = tint
-        )
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.88f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessHigh
+        ),
+        label = "sendButtonScale"
+    )
+    // MoshGrid: a solid acid disc with a dark arrow when there is something to send.
+    // isAccented is kept for callers; private chats no longer get a separate colour.
+    Box(
+        modifier = modifier
+            .size(ComposerButtonSize)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled
+            ) { onSend() },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(ComposerButtonSize)
+                .scale(scale)
+                .background(
+                    if (enabled) colorScheme.primary else colorScheme.surfaceVariant,
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Send,
+                contentDescription = stringResource(id = R.string.send_message),
+                modifier = Modifier.size(ComposerIconSize),
+                tint = if (enabled) colorScheme.onPrimary else colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

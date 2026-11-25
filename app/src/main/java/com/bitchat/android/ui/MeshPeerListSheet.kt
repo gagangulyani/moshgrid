@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.graphics.luminance
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.R
 import android.text.format.DateUtils
@@ -47,6 +48,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
@@ -483,84 +485,209 @@ fun MeshPeerListSheet(
         }
 
         pendingConversationDelete?.let { conversation ->
-            val deleteFailedMessage = stringResource(R.string.conversation_delete_failed)
-            val deletedMessage = stringResource(
-                R.string.conversation_deleted,
-                conversation.displayName
-            )
-            val undoLabel = stringResource(R.string.undo)
-            val restoreFailedMessage =
-                stringResource(R.string.conversation_restore_failed)
-            AlertDialog(
-                onDismissRequest = { pendingConversationDelete = null },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = null
-                    )
-                },
-                title = {
-                    Text(
-                        text = stringResource(R.string.delete_conversation_title),
-                        fontFamily = BitchatFontFamily
-                    )
-                },
-                text = {
-                    Text(
-                        text = stringResource(
-                            R.string.delete_conversation_message,
-                            conversation.displayName
-                        ),
-                        fontFamily = BitchatFontFamily
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            pendingConversationDelete = null
-                            sheetScope.launch {
-                                val deletion = viewModel.deletePrivateConversation(
-                                    conversation.conversationID
-                                )
-                                if (deletion == null) {
-                                    snackbarHostState.showSnackbar(
-                                        message = deleteFailedMessage
-                                    )
-                                    return@launch
-                                }
-                                val result = snackbarHostState.showSnackbar(
-                                    message = deletedMessage,
-                                    actionLabel = undoLabel,
-                                    withDismissAction = true,
-                                    duration = SnackbarDuration.Long
-                                )
-                                if (result == SnackbarResult.ActionPerformed) {
-                                    if (!viewModel.restoreDeletedConversation(deletion)) {
-                                        snackbarHostState.showSnackbar(
-                                            restoreFailedMessage
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    ) {
-                        Text(
-                            text = stringResource(R.string.delete),
-                            color = MaterialTheme.colorScheme.error,
-                            fontFamily = BitchatFontFamily
-                        )
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { pendingConversationDelete = null }) {
-                        Text(
-                            text = stringResource(android.R.string.cancel),
-                            fontFamily = BitchatFontFamily
-                        )
-                    }
-                }
+            ConversationDeleteDialog(
+                conversation = conversation,
+                viewModel = viewModel,
+                snackbarHostState = snackbarHostState,
+                scope = sheetScope,
+                onDismiss = { pendingConversationDelete = null }
             )
         }
+    }
+}
+
+/**
+ * MoshGrid Chats list, shown inline on the Chats tab (public chat is off, so this replaces the
+ * empty public timeline). Same data, rows, swipe actions and delete flow as the network sheet.
+ */
+@Composable
+internal fun ChatsListPane(
+    viewModel: ChatViewModel,
+    contentPadding: PaddingValues,
+    modifier: Modifier = Modifier,
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val conversations by viewModel.conversations.collectAsStateWithLifecycle()
+    val conversationStoreState by viewModel.conversationStoreState.collectAsStateWithLifecycle()
+    val peerDirect by viewModel.peerDirect.collectAsStateWithLifecycle()
+    val wifiAwareConnected by com.bitchat.android.wifiaware.WifiAwareController.connectedPeers.collectAsStateWithLifecycle()
+    val directPeerIdentityIDs = remember(peerDirect) {
+        peerDirect.asSequence().filter { (_, isDirect) -> isDirect }
+            .mapTo(mutableSetOf()) { (peerID, _) -> peerID.lowercase() }
+    }
+    val wifiAwareIdentityIDs = remember(wifiAwareConnected) {
+        wifiAwareConnected.keys.mapTo(mutableSetOf()) { it.lowercase() }
+    }
+    var pendingConversationDelete by remember { mutableStateOf<ConversationSummary?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val filtered = remember(conversations, query) {
+        val q = query.trim()
+        if (q.isEmpty()) conversations else conversations.filter { c ->
+            c.displayName.contains(q, ignoreCase = true) ||
+                c.latestMessagePreview.contains(q, ignoreCase = true) ||
+                c.draft?.contains(q, ignoreCase = true) == true
+        }
+    }
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    Box(modifier = modifier.background(colorScheme.background)) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
+            if (conversations.isNotEmpty()) {
+                item(key = "chats_search") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 10.dp)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(colorScheme.surface)
+                            .padding(start = 16.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.Search,
+                            contentDescription = null,
+                            tint = colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Box(Modifier.weight(1f)) {
+                            if (query.isEmpty()) {
+                                Text("Search chats", fontSize = 16.sp, color = colorScheme.onSurfaceVariant)
+                            }
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = query,
+                                onValueChange = { query = it },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                    color = colorScheme.onSurface,
+                                    fontSize = 16.sp,
+                                    fontFamily = BitchatFontFamily
+                                ),
+                                cursorBrush = androidx.compose.ui.graphics.SolidColor(colorScheme.primary),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .semantics { contentDescription = "Search chats" }
+                            )
+                        }
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }, modifier = Modifier.size(40.dp)) {
+                                Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.clear))
+                            }
+                        }
+                    }
+                }
+            }
+
+            when {
+                conversationStoreState is com.bitchat.android.services.ConversationStoreState.Loading &&
+                    conversations.isEmpty() -> item(key = "chats_loading") {
+                    ConversationSectionStatus(
+                        icon = { CircularProgressIndicator(Modifier.size(20.dp)) },
+                        text = stringResource(R.string.loading_conversations)
+                    )
+                }
+
+                conversationStoreState is com.bitchat.android.services.ConversationStoreState.Error &&
+                    conversations.isEmpty() -> item(key = "chats_error") {
+                    ConversationSectionStatus(
+                        icon = {
+                            Icon(Icons.Outlined.Warning, contentDescription = null, tint = colorScheme.error)
+                        },
+                        text = stringResource(R.string.conversation_storage_error)
+                    )
+                }
+
+                conversations.isEmpty() -> item(key = "chats_empty") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 28.dp, vertical = 40.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(CircleShape)
+                                .background(colorScheme.surface),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.ic_spec_envelope),
+                                contentDescription = null,
+                                tint = colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                        Text("No chats yet", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = colorScheme.onSurface)
+                        Text(
+                            "Open a friend from the Friends tab to say hi.",
+                            fontSize = 16.sp,
+                            color = colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Button(
+                            onClick = { viewModel.showVerificationSheet() },
+                            modifier = Modifier.height(52.dp),
+                            shape = RoundedCornerShape(26.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colorScheme.primary,
+                                contentColor = colorScheme.onPrimary
+                            )
+                        ) {
+                            Text("Add a friend", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                    }
+                }
+
+                filtered.isEmpty() -> item(key = "chats_no_results") {
+                    ConversationSectionStatus(
+                        icon = { Icon(Icons.Outlined.SearchOff, contentDescription = null) },
+                        text = stringResource(R.string.no_conversation_results)
+                    )
+                }
+            }
+
+            itemsIndexed(
+                items = filtered,
+                key = { _, c -> "conversation:${c.conversationID}" }
+            ) { index, conversation ->
+                ConversationSwipeItem(
+                    conversation = conversation,
+                    directPeerIdentityIDs = directPeerIdentityIDs,
+                    wifiAwareIdentityIDs = wifiAwareIdentityIDs,
+                    viewModel = viewModel,
+                    isFirst = index == 0,
+                    isLast = index == filtered.lastIndex,
+                    onPrivateChatStart = { conversationID -> viewModel.showPrivateChatSheet(conversationID) },
+                    onDeleteRequested = { pendingConversationDelete = it },
+                    onReadStateRequested = { item, isRead ->
+                        scope.launch { viewModel.setConversationRead(item.conversationID, isRead) }
+                    },
+                    modifier = Modifier.animateItem(),
+                    flat = true
+                )
+            }
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        )
+    }
+
+    pendingConversationDelete?.let { conversation ->
+        ConversationDeleteDialog(
+            conversation = conversation,
+            viewModel = viewModel,
+            snackbarHostState = snackbarHostState,
+            scope = scope,
+            onDismiss = { pendingConversationDelete = null }
+        )
     }
 }
 
@@ -955,7 +1082,9 @@ private fun ConversationSwipeItem(
     onPrivateChatStart: (String) -> Unit,
     onDeleteRequested: (ConversationSummary) -> Unit,
     onReadStateRequested: (ConversationSummary, Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** MoshGrid: the inline Chats list sits flat on the screen background, not in a card. */
+    flat: Boolean = false
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val hapticFeedback = LocalHapticFeedback.current
@@ -1026,16 +1155,17 @@ private fun ConversationSwipeItem(
         }
     }
 
+    val rowColor = if (flat) colorScheme.background else colorScheme.surface
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = AboutHorizontalPadding)
-            .clip(shape),
-        color = colorScheme.surface,
-        shape = shape
+            .padding(horizontal = if (flat) 0.dp else AboutHorizontalPadding)
+            .clip(if (flat) androidx.compose.ui.graphics.RectangleShape else shape),
+        color = rowColor,
+        shape = if (flat) androidx.compose.ui.graphics.RectangleShape else shape
     ) {
         Column {
-            if (!isFirst) SheetCardDivider()
+            if (!isFirst && !flat) SheetCardDivider()
             SwipeToDismissBox(
                 state = dismissState,
                 enableDismissFromStartToEnd = true,
@@ -1097,6 +1227,8 @@ private fun ConversationSwipeItem(
                     theyFavoritedUs = theyFavoritedUs,
                     isVerified = isVerified,
                     deleteDescription = deleteDescription,
+                    rowColor = rowColor,
+                    horizontalPadding = if (flat) 20.dp else SheetRowHorizontal,
                     onClick = { onPrivateChatStart(conversation.conversationID) },
                     onTogglePinned = {
                         viewModel.toggleConversationPinned(conversation.conversationID)
@@ -1124,6 +1256,8 @@ private fun ConversationRow(
     theyFavoritedUs: Boolean,
     isVerified: Boolean,
     deleteDescription: String,
+    rowColor: Color,
+    horizontalPadding: Dp,
     onClick: () -> Unit,
     onTogglePinned: () -> Unit,
     onToggleMuted: () -> Unit,
@@ -1169,11 +1303,11 @@ private fun ConversationRow(
     } else {
         basePreview
     }
+    // MoshGrid: plain words for where a friend is, no "mesh" or "Nostr".
     val presenceDescription = when {
-        conversation.isConnected -> connectionDescription
-        conversation.transport == DirectMessageTransport.NOSTR ->
-            stringResource(R.string.offline_reachable_via_nostr)
-        else -> stringResource(R.string.offline_not_in_mesh)
+        conversation.isConnected -> "In reach"
+        conversation.transport == DirectMessageTransport.NOSTR -> "Over the internet"
+        else -> "Not in reach"
     }
     val peerIdentity = conversation.nostrPubkey
         ?.let(viewModel::peerIdentityForNostrPubkey)
@@ -1207,7 +1341,7 @@ private fun ConversationRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colorScheme.surface)
+            .background(rowColor)
             .semantics(mergeDescendants = true) {
                 contentDescription = listOf(
                     conversation.displayName,
@@ -1238,141 +1372,107 @@ private fun ConversationRow(
             }
             .clickable(onClick = onClick)
             .padding(
-                horizontal = SheetRowHorizontal,
-                vertical = 10.dp
+                start = horizontalPadding,
+                end = 4.dp,
+                top = 10.dp,
+                bottom = 10.dp
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        PeerAvatar(
+        // MoshGrid row: round avatar, bold name and time, one-line preview with your message's
+        // status and an acid unread badge, then a short "where" line.
+        com.bitchat.android.ui.mosh.MoshAvatar(
             name = baseNameRaw,
-            color = assignedColor,
-            isFavorite = isFavorite,
-            theyFavoritedUs = theyFavoritedUs,
-            isVerified = isVerified,
-            badge = {
-                when {
-                    conversation.isConnected -> Icon(
-                        painter = painterResource(
-                            conversationTransportIcon(
-                                isReachedOverInternet = false,
-                                isWifiAware = isWifiAware,
-                                isDirect = isDirect
-                            )
-                        ),
-                        contentDescription = connectionDescription,
-                        modifier = Modifier.size(13.dp),
-                        tint = colorScheme.primary
-                    )
-
-                    conversation.transport == DirectMessageTransport.NOSTR -> Icon(
-                        painter = painterResource(R.drawable.ic_spec_globe),
-                        contentDescription = stringResource(
-                            R.string.offline_reachable_via_nostr
-                        ),
-                        modifier = Modifier.size(13.dp),
-                        tint = palette.accentPurple
-                    )
-
-                    else -> Icon(
-                        imageVector = Icons.Outlined.Circle,
-                        contentDescription = stringResource(R.string.offline_not_in_mesh),
-                        modifier = Modifier.size(11.dp),
-                        tint = palette.textTertiary
-                    )
-                }
-            }
+            key = conversation.connectedPeerID ?: conversation.conversationID,
+            size = 52.dp
         )
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(16.dp))
 
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
                     text = truncateNickname(baseNameRaw),
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontFamily = BitchatFontFamily,
-                        fontWeight = if (conversation.unreadCount > 0) {
-                            FontWeight.Bold
-                        } else {
-                            FontWeight.Medium
-                        }
-                    ),
-                    color = assignedColor,
+                    fontSize = 17.sp,
+                    fontWeight = if (conversation.unreadCount > 0) FontWeight.Bold else FontWeight.SemiBold,
+                    color = colorScheme.onSurface,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
-                if (suffix.isNotEmpty()) {
-                    Text(
-                        text = suffix,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = BitchatFontFamily,
-                            fontWeight = FontWeight.Medium
-                        ),
-                        color = assignedColor.copy(alpha = SUFFIX_ALPHA)
+                if (isVerified) {
+                    Icon(
+                        Icons.Filled.Verified,
+                        contentDescription = stringResource(R.string.fingerprint_verified_label),
+                        modifier = Modifier.size(16.dp),
+                        tint = colorScheme.primary
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                if (conversation.isMuted) {
+                    Icon(
+                        Icons.Outlined.NotificationsOff,
+                        contentDescription = muteDescription,
+                        modifier = Modifier.size(16.dp),
+                        tint = colorScheme.onSurfaceVariant
                     )
                 }
                 if (conversation.isPinned) {
                     Icon(
                         Icons.Filled.PushPin,
                         contentDescription = pinDescription,
-                        modifier = Modifier.size(14.dp),
-                        tint = palette.textTertiary
+                        modifier = Modifier.size(16.dp),
+                        tint = colorScheme.onSurfaceVariant
                     )
                 }
-                if (conversation.isMuted) {
-                    Icon(
-                        Icons.Outlined.NotificationsOff,
-                        contentDescription = muteDescription,
-                        modifier = Modifier.size(14.dp),
-                        tint = palette.textTertiary
-                    )
-                }
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
                 Text(
-                    text = messagePreview,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = BitchatFontFamily,
-                        fontWeight = if (!conversation.draft.isNullOrBlank()) {
-                            FontWeight.Medium
-                        } else {
-                            FontWeight.Normal
-                        }
-                    ),
-                    color = if (!conversation.draft.isNullOrBlank()) {
-                        palette.accentOrange
-                    } else {
-                        palette.textTertiary
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Text(
-                    text = stringResource(
-                        R.string.conversation_preview_timestamp,
-                        relativeTime
-                    ),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = BitchatFontFamily
-                    ),
-                    color = palette.textTertiary,
+                    text = relativeTime,
+                    fontSize = 13.sp,
+                    fontWeight = if (conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                    color = if (conversation.unreadCount > 0) colorScheme.primary else colorScheme.onSurfaceVariant,
                     maxLines = 1
                 )
             }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (conversation.latestMessageIsOutgoing && conversation.draft.isNullOrBlank()) {
+                    conversation.latestDeliveryStatus?.let { status ->
+                        DeliveryStatusIcon(status = status, sentAtMs = conversation.latestMessageAt)
+                    }
+                }
+                Text(
+                    text = if (conversation.latestMessageIsOutgoing && conversation.draft.isNullOrBlank()) basePreview else messagePreview,
+                    fontSize = 15.sp,
+                    fontWeight = if (!conversation.draft.isNullOrBlank()) FontWeight.Medium else FontWeight.Normal,
+                    color = if (!conversation.draft.isNullOrBlank()) {
+                        palette.accentOrange
+                    } else {
+                        colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                UnreadBadge(
+                    count = conversation.unreadCount,
+                    colorScheme = colorScheme
+                )
+            }
+            Text(
+                text = presenceDescription,
+                fontSize = 13.sp,
+                color = if (conversation.isConnected) colorScheme.onSurfaceVariant else MoshWaitColor(),
+                maxLines = 1
+            )
         }
-
-        UnreadBadge(
-            count = conversation.unreadCount,
-            colorScheme = colorScheme,
-            modifier = Modifier.padding(start = 4.dp)
-        )
 
         Box {
             IconButton(
@@ -1624,21 +1724,21 @@ private fun UnreadBadge(
         Box(
             modifier = Modifier
                 .background(
-                    color = palette.accentOrange,
-                    shape = RoundedCornerShape(10.dp)
+                    color = colorScheme.primary,
+                    shape = RoundedCornerShape(11.dp)
                 )
-                .padding(horizontal = 6.dp, vertical = 2.dp)
-                .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp),
+                .padding(horizontal = 7.dp, vertical = 2.dp)
+                .defaultMinSize(minWidth = 22.dp, minHeight = 18.dp),
             contentAlignment = Alignment.Center
         ) {
             AnimatedCountLabel(
                 count = count,
                 text = if (count > 99) "99+" else count.toString(),
                 style = MaterialTheme.typography.labelSmall,
-                fontSize = 10.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = BitchatFontFamily,
-                color = Color.Black
+                color = colorScheme.onPrimary
             )
         }
     }
@@ -1736,7 +1836,8 @@ fun PrivateChatSheet(
             } else {
                 peerNicknames[peerID] ?: "Unknown"
             }
-            "#$gh/@$name"
+            // MoshGrid: just the name; the '#area/@' decoration is gone.
+            name
         } else {
             displayName
         }
@@ -1913,7 +2014,13 @@ fun PrivateChatSheet(
                                 stringResource(R.string.cd_nostr_reachable)
                             else -> null
                         },
-                        title = titleText
+                        title = titleText,
+                        avatarKey = peerID,
+                        subtitle = when {
+                            isConnected -> "In reach"
+                            isNostrPeer || isNostrReachableFavorite -> "Over the internet"
+                            else -> "Not in reach"
+                        }
                     ) {
                         // MoshGrid: friends are made by scanning QR codes; a star tap here would
                         // silently unfriend someone, so it is hidden.
@@ -1981,4 +2088,97 @@ fun PrivateChatSheet(
             }
         }
     }
+}
+
+/** Amber "not in reach" colour from the design, darker on light backgrounds for contrast. */
+@Composable
+private fun MoshWaitColor(): Color =
+    if (MaterialTheme.colorScheme.background.luminance() < 0.5f) com.bitchat.android.ui.mosh.MoshColors.Amber
+    else Color(0xFF8A5A00)
+
+@Composable
+private fun ConversationDeleteDialog(
+    conversation: ConversationSummary,
+    viewModel: ChatViewModel,
+    snackbarHostState: SnackbarHostState,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onDismiss: () -> Unit,
+) {
+    val deleteFailedMessage = stringResource(R.string.conversation_delete_failed)
+    val deletedMessage = stringResource(
+        R.string.conversation_deleted,
+        conversation.displayName
+    )
+    val undoLabel = stringResource(R.string.undo)
+    val restoreFailedMessage =
+        stringResource(R.string.conversation_restore_failed)
+    AlertDialog(
+        onDismissRequest = { onDismiss() },
+        icon = {
+            Icon(
+                imageVector = Icons.Outlined.Delete,
+                contentDescription = null
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.delete_conversation_title),
+                fontFamily = BitchatFontFamily
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(
+                    R.string.delete_conversation_message,
+                    conversation.displayName
+                ),
+                fontFamily = BitchatFontFamily
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDismiss()
+                    scope.launch {
+                        val deletion = viewModel.deletePrivateConversation(
+                            conversation.conversationID
+                        )
+                        if (deletion == null) {
+                            snackbarHostState.showSnackbar(
+                                message = deleteFailedMessage
+                            )
+                            return@launch
+                        }
+                        val result = snackbarHostState.showSnackbar(
+                            message = deletedMessage,
+                            actionLabel = undoLabel,
+                            withDismissAction = true,
+                            duration = SnackbarDuration.Long
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            if (!viewModel.restoreDeletedConversation(deletion)) {
+                                snackbarHostState.showSnackbar(
+                                    restoreFailedMessage
+                                )
+                            }
+                        }
+                    }
+                }
+            ) {
+                Text(
+                    text = stringResource(R.string.delete),
+                    color = MaterialTheme.colorScheme.error,
+                    fontFamily = BitchatFontFamily
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onDismiss() }) {
+                Text(
+                    text = stringResource(android.R.string.cancel),
+                    fontFamily = BitchatFontFamily
+                )
+            }
+        }
+    )
 }

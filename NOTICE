@@ -1,3 +1,6 @@
 MoshGrid is based on bitchat-android
 (https://github.com/permissionlesstech/bitchat-android), licensed GPL-3.0.
 MoshGrid is distributed under the same licence; see LICENSE.md.
+
+Atkinson Hyperlegible Next (app/src/main/res/font) is Copyright 2020-2024 The Atkinson Hyperlegible
+Next Project Authors, licensed under the SIL Open Font License 1.1; see docs/licenses.

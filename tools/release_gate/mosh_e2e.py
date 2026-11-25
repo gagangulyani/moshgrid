@@ -98,6 +98,10 @@ class Phone:
         """Bottom navigation item (the lowest node with that label)."""
         if "Find" not in self.texts():
             self.launch()
+        # Friends is a page under the You tab, not a tab of its own.
+        if label == "Friends":
+            self.tab("You")
+            time.sleep(1)
         hits = [b for t, b, _ in self.nodes() if t == label]
         if hits:
             self.tap_bounds(max(hits, key=lambda b: b[1]))
@@ -184,8 +188,11 @@ def onboard(p: Phone):
         tx = p.texts()
         if "Chats" in tx and "Find" in tx:
             return True
-        if "What your friends call you" in tx and not typed:
-            p.tap("What your friends call you")
+        if "Set it up" in tx:
+            p.tap("Set it up")
+            continue
+        if "Your name" in tx and not typed:
+            p.tap("Your name")
             p.sh("input keyevent 123")
             for _ in range(40):
                 p.sh("input keyevent 67")
@@ -195,8 +202,11 @@ def onboard(p: Phone):
             time.sleep(1)
             typed = True
             continue
-        if "Start" in tx and typed:
-            p.tap("Start")
+        if "Start MoshGrid" in tx and typed:
+            p.tap("Start MoshGrid")
+            continue
+        if "Next" in tx and typed:
+            p.tap("Next")
             continue
         for label in ("Wait", "Grant Permissions", "Skip for Now", "Allow", "While using the app"):
             if label in tx:
@@ -562,7 +572,7 @@ def sc_wipe(r: Run):
     r.check("asks to confirm", "Wipe all data?" in a.texts())
     a.tap("Wipe")
     time.sleep(8)
-    r.check("setup shows again", "Welcome to MoshGrid" in a.texts())
+    r.check("setup shows again", "Set it up" in a.texts())
     r.check("A's Help stopped", a.hook("mosh_help", action="status").get("alert_id") is None)
     r.check("friend got the final cancel", wait(lambda: not help_seen(r, b, a), 150))
 

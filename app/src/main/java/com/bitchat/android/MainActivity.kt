@@ -297,7 +297,18 @@ class MainActivity : OrientationAwareActivity() {
                 )
             }
             
-            OnboardingState.PERMISSION_EXPLANATION -> {
+            OnboardingState.PERMISSION_EXPLANATION -> if (!com.bitchat.android.mosh.MoshRuntime.prefs.onboardingDone) {
+                // MoshGrid's step-by-step setup asks for each permission where it is needed; whatever
+                // is still missing at Start goes through the usual request.
+                com.bitchat.android.ui.mosh.MoshOnboarding(
+                    prefs = com.bitchat.android.mosh.MoshRuntime.prefs,
+                    currentName = chatViewModel.nickname.value,
+                    onName = { chatViewModel.setNickname(it) },
+                ) {
+                    mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_REQUESTING)
+                    onboardingCoordinator.requestPermissions()
+                }
+            } else {
                 PermissionExplanationScreen(
                     modifier = modifier,
                     permissionCategories = permissionManager.getCategorizedPermissions(),

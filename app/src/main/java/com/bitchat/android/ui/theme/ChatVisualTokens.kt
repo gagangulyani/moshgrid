@@ -11,16 +11,15 @@ import androidx.compose.ui.unit.sp
 import com.bitchat.android.R
 
 /**
- * The bundled Geist Mono family used throughout the app.
- *
- * Keeping the fonts in the APK preserves offline behavior and guarantees that the design-spec
- * metrics do not depend on which monospace family a device happens to provide.
+ * MoshGrid's typeface, Atkinson Hyperlegible Next (SIL OFL 1.1, docs/licenses), bundled so the app
+ * looks the same offline on every phone. One variable font file, set to each weight.
  */
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
 internal val BitchatFontFamily = FontFamily(
-    Font(R.font.geist_mono_regular, FontWeight.Normal),
-    Font(R.font.geist_mono_medium, FontWeight.Medium),
-    Font(R.font.geist_mono_semibold, FontWeight.SemiBold),
-    Font(R.font.geist_mono_bold, FontWeight.Bold),
+    listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold, FontWeight.ExtraBold).map { w ->
+        Font(R.font.atkinson_hyperlegible_next, w,
+            variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(androidx.compose.ui.text.font.FontVariation.weight(w.weight)))
+    }
 )
 
 /** Exact typography, spacing, and opacity values exported for the chat transcript. */

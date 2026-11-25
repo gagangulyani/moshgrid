@@ -20,6 +20,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -112,7 +124,13 @@ fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
         ?: venues.firstOrNull().takeIf { pins.isEmpty() }
     var fitRequest by remember { mutableIntStateOf(0) }
 
-    Column(Modifier.fillMaxSize()) {
+    val target = friends.firstOrNull { it.peerID == selected }
+    val mp = meeting
+    val finding = (selected == MEETING && mp != null) || target != null
+
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        if (!finding) MoshTitle("Find")
+        // The map stays in place while finding someone, so MapLibre is not torn down and rebuilt.
         Box(Modifier.fillMaxWidth().weight(1f)) {
             VenueMap(
                 venue = venue,
@@ -120,32 +138,29 @@ fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
                 fitRequest = fitRequest,
                 onLongPress = { longPress = it },
             )
-            if (pins.isNotEmpty()) {
-                TextButton(
-                    onClick = { fitRequest++ },
-                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
-                        .background(Color(0xCC000000), RoundedCornerShape(12.dp)),
-                ) { Text("Show everyone", color = Color.White) }
+            if (venue != null) {
+                MapChip(venue.name, Modifier.align(Alignment.TopStart).padding(12.dp), bold = true)
             }
-            MapLegend(pins, Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 22.dp))
+            if (pins.isNotEmpty()) {
+                MapChip("Show everyone", Modifier.align(Alignment.TopEnd).padding(12.dp), bold = true, onClick = { fitRequest++ })
+            }
+            MapLegend(pins, Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 34.dp))
             Text(
                 "© OpenStreetMap contributors",
-                fontSize = 10.sp, color = Color(0xFF9E9E9E),
-                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
             )
-            if (venue != null) {
-                Text(venue.name, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.align(Alignment.TopStart).padding(12.dp)
-                    .background(Color(0xCC000000), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 6.dp))
-            }
         }
-        meeting?.let { MeetingBanner(it, me, onFind = { selected = MEETING }) }
-        val target = friends.firstOrNull { it.peerID == selected }
-        val mp = meeting
         if (selected == MEETING && mp != null) {
-            GuidancePanel("Going to ${mp.label}", me, LocationUpdate(mp.lat, mp.lon, 0f, mp.setAtMs, 0), now, showAge = false) { selected = null }
+            GuidancePanel("Going to ${mp.label}", me, LocationUpdate(mp.lat, mp.lon, 0f, mp.setAtMs, 0), now,
+                arrowColor = MoshColors.Acid, showAge = false) { selected = null }
         } else if (target != null) {
-            GuidancePanel("Finding ${target.displayName}", me, locations[target.peerID], now) { selected = null }
+            GuidancePanel("Finding ${target.displayName}", me, locations[target.peerID], now,
+                arrowColor = MoshColors.Pink) { selected = null }
         } else {
+            meeting?.let { MeetingRow(it, me, onFind = { selected = MEETING }) }
             FriendList(friends, locations, lastHeard, me, now) { selected = it }
         }
     }
@@ -171,6 +186,17 @@ fun FindScreen(focusPeerID: String? = null, focusMeeting: Boolean = false) {
 /** [stroke] is white for whoever is being found, so they stand out among several friends. */
 private data class Pin(val lat: Double, val lon: Double, val color: String, val radius: Float, val stroke: String = "#000000")
 
+/** Rounded overlay on the map; tappable when [onClick] is given. */
+@Composable
+private fun MapChip(text: String, modifier: Modifier, bold: Boolean = false, onClick: (() -> Unit)? = null) {
+    val base = modifier.clip(MoshShapes.Pill).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+    val m = if (onClick != null) base.clickable(onClick = onClick).heightIn(min = 48.dp) else base.heightIn(min = 36.dp)
+    Box(m.padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+        Text(text, fontSize = 14.sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+    }
+}
+
 /** What each colour means, for the colours on the map right now. */
 @Composable
 private fun MapLegend(pins: List<Pin>, modifier: Modifier) {
@@ -178,11 +204,13 @@ private fun MapLegend(pins: List<Pin>, modifier: Modifier) {
     val entries = listOf(CYAN to "You", PINK to "Friend", GREY to "Old location", RED to "Help", ACID to "Meeting point")
         .filter { it.first in shown }
     if (entries.isEmpty()) return
-    Row(modifier.background(Color(0xCC000000), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        entries.forEach { (color, label) ->
-            Box(Modifier.size(10.dp).background(Color(android.graphics.Color.parseColor(color)), androidx.compose.foundation.shape.CircleShape))
-            Text(label, fontSize = 11.sp, color = Color.White, maxLines = 1)
+    Row(modifier.clip(MoshShapes.Pill).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+        .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        entries.forEachIndexed { i, (color, label) ->
+            if (i > 0) Spacer(Modifier.width(4.dp))
+            Box(Modifier.size(10.dp).background(Color(android.graphics.Color.parseColor(color)), CircleShape))
+            Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
         }
     }
 }
@@ -321,53 +349,73 @@ private fun ago(ms: Long): String = when {
 
 private fun metres(d: Double): String = if (d < 1000) "${d.toInt()} m" else "%.1f km".format(d / 1000)
 
+/** Small acid pill, the design's "Find" button. */
+@Composable
+private fun FindPill(label: String, onClick: () -> Unit) {
+    Box(Modifier.heightIn(min = 48.dp).clip(MoshShapes.Pill).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+        .clickable(onClick = onClick).padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
+        Text(label, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
+
 @Composable
 private fun FriendList(friends: List<Friend>, locations: Map<String, LocationUpdate>, lastHeard: Map<String, Long>, me: LocationUpdate?, now: Long, onPick: (String) -> Unit) {
     if (friends.isEmpty()) {
-        Text("No friends yet. Add them in person from the Friends tab.", modifier = Modifier.padding(20.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Nobody to find yet", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Text("Add friends from Chats with the + button.", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         return
     }
-    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
+    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 280.dp)) {
         items(friends, key = { it.peerID }) { f ->
             val l = locations[f.peerID]
             val heard = lastHeard[f.peerID]
+            val stale = l != null && now - l.takenAtMs > 600_000
             val line = when {
                 f.status == FriendStatus.WAITING_FOR_THEM -> "Waiting for them to scan you"
                 l == null -> "No location yet"
                 else -> {
-                    val dist = me?.let { metres(distanceM(it.lat, it.lon, l.lat, l.lon)) } ?: "?"
-                    val stale = now - l.takenAtMs > 600_000
-                    "$dist · ±${l.accuracyM.toInt()} m · location ${ago(now - l.takenAtMs)}" + if (stale) " (old)" else ""
+                    val dist = me?.let { metres(distanceM(it.lat, it.lon, l.lat, l.lon)) + " · " } ?: ""
+                    dist + (if (stale) "old location, " else "") + ago(now - l.takenAtMs)
                 }
             }
             val silent = heard == null || now - heard > 900_000
-            Row(Modifier.fillMaxWidth().clickable { onPick(f.peerID) }.padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().clickable { onPick(f.peerID) }.padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                MoshAvatar(f.displayName, f.peerID, size = 48.dp)
                 Column(Modifier.weight(1f)) {
-                    Text(f.displayName, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                    Text(line, fontSize = 14.sp, color = if (l != null && now - l.takenAtMs > 600_000) Color(0xFFFFC266) else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(f.displayName, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
+                    Text(line, fontSize = 14.sp, color = if (stale) MoshColors.Amber else MaterialTheme.colorScheme.onSurfaceVariant)
                     if (silent && f.status == FriendStatus.FRIEND) {
-                        Text(if (heard == null) "Not heard from yet" else "Last heard ${ago(now - heard)}", fontSize = 12.sp, color = Color(0xFFFFC266))
+                        Text(if (heard == null) "Not heard from yet" else "Last heard ${ago(now - heard)}", fontSize = 13.sp, color = MoshColors.Amber)
                     }
                 }
-                Text("Find", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                FindPill("Find") { onPick(f.peerID) }
             }
         }
     }
 }
 
 @Composable
-private fun MeetingBanner(mp: MeetingPoint, me: LocationUpdate?, onFind: () -> Unit) {
-    Row(Modifier.fillMaxWidth().background(Color(0xFF2C3A0E)).padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Meeting point: ${mp.label}", fontWeight = FontWeight.Bold, color = Color.White)
-            me?.let { Text(metres(distanceM(it.lat, it.lon, mp.lat, mp.lon)) + " away", fontSize = 13.sp, color = Color.White) }
+private fun MeetingRow(mp: MeetingPoint, me: LocationUpdate?, onFind: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center) {
+            Text("◆", color = MaterialTheme.colorScheme.primary, fontSize = 20.sp)
         }
-        TextButton(onClick = onFind) { Text("Find", color = Color(0xFFC6FF3D), fontWeight = FontWeight.Bold) }
+        Column(Modifier.weight(1f)) {
+            Text("Meeting point", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            val away = me?.let { " · " + metres(distanceM(it.lat, it.lon, mp.lat, mp.lon)) + " away" } ?: ""
+            Text(mp.label + away, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+        }
         var confirm by remember { mutableStateOf(false) }
-        TextButton(onClick = { confirm = true }) { Text("Clear", color = Color(0xFFC6FF3D)) }
+        TextButton(onClick = { confirm = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text("Clear", color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
+        }
+        FindPill("Find", onFind)
         if (confirm) AlertDialog(
             onDismissRequest = { confirm = false },
             title = { Text("Clear the meeting point?") },
@@ -383,43 +431,81 @@ private fun MeetingBanner(mp: MeetingPoint, me: LocationUpdate?, onFind: () -> U
     }
 }
 
+/** The design's huge distance: number in 88sp ExtraBold, unit smaller and grey. */
 @Composable
-private fun GuidancePanel(title: String, me: LocationUpdate?, target: LocationUpdate?, now: Long, showAge: Boolean = true, onClose: () -> Unit) {
+private fun BigDistance(d: Double) {
+    val (num, unit) = metres(d).split(" ").let { it[0] to it.getOrElse(1) { "" } }
+    Text(buildAnnotatedString {
+        append(num)
+        withStyle(SpanStyle(fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)) { append(" $unit") }
+    }, fontSize = 88.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 88.sp, letterSpacing = (-2).sp)
+}
+
+@Composable
+private fun GuidancePanel(title: String, me: LocationUpdate?, target: LocationUpdate?, now: Long, arrowColor: Color,
+                          showAge: Boolean = true, onClose: () -> Unit) {
     val compass = rememberHeading()
-    Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        when {
-            target == null -> Text("No location from them yet.")
-            me == null -> Text("Waiting for your GPS…")
-            else -> when (val g = guidance(me, target)) {
-                Guidance.CloseLookAround -> {
-                    Text("Close", fontSize = 56.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("GPS can't tell the last few metres. Look around, or call out.")
-                }
-                is Guidance.Arrow -> {
-                    val heading = compass.headingDeg
-                    if (heading != null) {
-                        val rel = g.bearingDeg - heading
-                        Text("↑", fontSize = 72.sp, color = Color(0xFFFF5CDB), modifier = Modifier.rotate(rel.toFloat()))
-                        Text(metres(g.distanceM), fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(directionWords(rel).replaceFirstChar { it.uppercase() }, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        if (compass.needsCalibration) {
-                            Text("Compass unsure: move your phone in a figure of 8.", fontSize = 13.sp, color = Color(0xFFFFC266))
+    val soft = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to list") }
+            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f))
+        }
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            when {
+                target == null -> Text("No location from them yet.", fontSize = 17.sp, color = soft)
+                me == null -> Text("Waiting for your GPS…", fontSize = 17.sp, color = soft)
+                else -> when (val g = guidance(me, target)) {
+                    Guidance.CloseLookAround -> {
+                        Text("Close", fontSize = 88.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 88.sp)
+                        Box(Modifier.clip(MoshShapes.Card).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                            .padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Text("GPS can't tell the last few metres. Look around, or call out.", fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
                         }
-                    } else {
-                        // No compass: the arrow is relative to north, and the words say so.
-                        Text("↑", fontSize = 72.sp, color = Color(0xFFFF5CDB), modifier = Modifier.rotate(g.bearingDeg.toFloat()))
-                        Text(metres(g.distanceM), fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
-                        Text("To the ${compassWords(g.bearingDeg)}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text(if (compass.available) "Hold your phone still to point the arrow." else "No compass on this phone: the arrow points as if up is north.",
-                            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    is Guidance.Arrow -> {
+                        val heading = compass.headingDeg
+                        if (heading != null) {
+                            val rel = g.bearingDeg - heading
+                            Text("↑", fontSize = 72.sp, fontWeight = FontWeight.ExtraBold, color = arrowColor, modifier = Modifier.rotate(rel.toFloat()))
+                            BigDistance(g.distanceM)
+                            Text(directionWords(rel).replaceFirstChar { it.uppercase() }, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                            if (compass.needsCalibration) {
+                                Text("Compass unsure: move your phone in a figure of 8.", fontSize = 14.sp, color = MoshColors.Amber,
+                                    textAlign = TextAlign.Center)
+                            }
+                        } else {
+                            // No compass: the arrow is relative to north, and the words say so.
+                            Text("↑", fontSize = 72.sp, fontWeight = FontWeight.ExtraBold, color = arrowColor, modifier = Modifier.rotate(g.bearingDeg.toFloat()))
+                            BigDistance(g.distanceM)
+                            Text("To the ${compassWords(g.bearingDeg)}", fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                            Text(if (compass.available) "Hold your phone still to point the arrow." else "No compass on this phone: the arrow points as if up is north.",
+                                fontSize = 14.sp, color = soft, textAlign = TextAlign.Center)
+                        }
                     }
                 }
             }
         }
-        if (showAge) target?.let { Text("Their location: ${ago(now - it.takenAtMs)}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        TextButton(onClick = onClose) { Text("Back to list") }
+        if (showAge && target != null) {
+            val stale = now - target.takenAtMs > 600_000
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MoshTile("Their location", Modifier.weight(1f)) {
+                    Text(ago(now - target.takenAtMs).replaceFirstChar { it.uppercase() }, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
+                        color = if (stale) MoshColors.Amber else MaterialTheme.colorScheme.onSurface)
+                    if (stale) Text("They may have moved", fontSize = 13.sp, color = MoshColors.Amber)
+                }
+                MoshTile("Accurate to", Modifier.weight(1f)) {
+                    Text("±${target.accuracyM.toInt()} m", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 48.dp).clip(MoshShapes.Pill)
+            .background(MaterialTheme.colorScheme.surface).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
+            Text("Back to list", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        }
     }
 }
 

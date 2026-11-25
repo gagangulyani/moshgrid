@@ -67,7 +67,7 @@ internal const val SUFFIX_THIN_SPACE = " "
 /**
  * Build the sender label shown above the first message of a group.
  *
- * Renders `@name` plus a dimmed `#abcd` suffix, separated by a thin space. The name carries
+ * Renders the name plus a dimmed `#abcd` suffix, separated by a thin space. The name carries
  * a `nickname_click` annotation for everyone except yourself.
  */
 fun formatTextMessageSender(
@@ -93,7 +93,7 @@ fun formatTextMessageSender(
             fontWeight = senderWeight
         )
     )
-    builder.append("@")
+    // MoshGrid: plain names, no decorative '@'.
     val nicknameStart = builder.length
     builder.append(truncateNickname(baseName))
     val nicknameEnd = builder.length

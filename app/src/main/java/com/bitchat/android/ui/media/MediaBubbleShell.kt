@@ -62,17 +62,8 @@ fun MediaBubbleShell(
     val haptic = LocalHapticFeedback.current
     val isSelf = message.isFromSelf(currentUserNickname, myPeerID)
 
-    val authorColor = remember(message, isSelf, palette) {
-        if (isSelf) palette.accentOrange else colorForPeer(peerIdentityForMessage(message), palette)
-    }
-
-    val corner = ChatVisualTokens.BubbleCornerRadius
-    val tail = ChatVisualTokens.BubbleTailRadius
-    val bubbleShape = if (isSelf) {
-        RoundedCornerShape(topStart = corner, topEnd = corner, bottomEnd = tail, bottomStart = corner)
-    } else {
-        RoundedCornerShape(topStart = corner, topEnd = corner, bottomEnd = corner, bottomStart = tail)
-    }
+    val bubbleColor = com.bitchat.android.ui.moshBubbleColor(isSelf)
+    val bubbleShape = com.bitchat.android.ui.MoshBubbleShape
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -80,15 +71,7 @@ fun MediaBubbleShell(
     ) {
         Box(
             modifier = Modifier
-                .border(
-                    width = 1.dp,
-                    color = authorColor.copy(alpha = ChatVisualTokens.BubbleBorderAlpha),
-                    shape = bubbleShape
-                )
-                .background(
-                    color = authorColor.copy(alpha = ChatVisualTokens.BubbleBackgroundAlpha),
-                    shape = bubbleShape
-                )
+                .background(color = bubbleColor, shape = bubbleShape)
                 .combinedClickable(
                     enabled = onLongPress != null,
                     onClick = {},
@@ -142,12 +125,14 @@ fun MediaBubbleShell(
                         text = formatTextMessageMetadata(message, timeFormatter),
                         fontFamily = BitchatFontFamily,
                     )
-                    if (isSelf && message.isPrivate) {
-                        message.deliveryStatus?.let { status ->
-                            Spacer(Modifier.width(4.dp))
-                            DeliveryStatusIcon(status = status)
-                        }
-                    }
+                }
+            }
+        }
+        // MoshGrid: status under your own bubble, as with text messages.
+        if (isSelf && message.isPrivate) {
+            message.deliveryStatus?.let { status ->
+                Box(Modifier.padding(top = 3.dp, end = 4.dp)) {
+                    DeliveryStatusIcon(status = status, showLabel = true)
                 }
             }
         }

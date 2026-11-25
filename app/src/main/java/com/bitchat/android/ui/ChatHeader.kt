@@ -49,7 +49,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.RowScope
 import com.bitchat.android.R
-import com.bitchat.android.core.ui.component.button.BitChatBrandButton
+import kotlinx.coroutines.launch
 import com.bitchat.android.core.ui.component.button.CloseButton
 import com.bitchat.android.ui.theme.BitchatMotion
 import com.bitchat.android.ui.theme.LocalBitchatPalette
@@ -60,7 +60,7 @@ import com.bitchat.android.ui.theme.LocalBitchatPalette
  */
 
 /** Height of the chat top bar. Taller than the old 42.dp so 44.dp tap targets fit properly. */
-val ChatHeaderHeight = 52.dp
+val ChatHeaderHeight = 64.dp
 
 /**
  * The single visible glyph size used by every icon in the top bar.
@@ -80,7 +80,7 @@ internal val HeaderIconSize = 19.dp
 private val HeaderTextSize = 17.sp
 
 /** Minimum tap target for every interactive element in the header. */
-private val HeaderTapTarget = 44.dp
+private val HeaderTapTarget = 48.dp
 
 internal enum class HeaderCrowdingMode {
     Full,
@@ -409,9 +409,61 @@ fun ConversationHeader(
     modifier: Modifier = Modifier,
     onTitleClick: (() -> Unit)? = null,
     leadingContentDescription: String? = null,
+    /** MoshGrid: when set, a round avatar replaces the leading glyph (friend chats). */
+    avatarKey: String? = null,
+    /** MoshGrid: one short line under the name, e.g. whether they are in reach. */
+    subtitle: String? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val colorScheme = MaterialTheme.colorScheme
+
+    if (avatarKey != null) {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(ChatHeaderHeight)
+                .padding(start = 16.dp, end = HeaderInsetEnd),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .then(
+                        if (onTitleClick != null) Modifier.clip(HeaderClusterShape).pressScaleClickable(onClick = onTitleClick)
+                        else Modifier
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                com.bitchat.android.ui.mosh.MoshAvatar(name = title, key = avatarKey, size = 40.dp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (subtitle != null) {
+                        Text(
+                            text = subtitle,
+                            fontSize = 13.sp,
+                            color = colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                content = actions
+            )
+        }
+        return
+    }
 
     Row(
         modifier = modifier
@@ -515,20 +567,14 @@ fun NicknameEditor(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
     ) {
-        Text(
-            text = stringResource(R.string.at_symbol),
-            style = MaterialTheme.typography.bodyMedium,
-            fontSize = HeaderTextSize,
-            color = colorScheme.primary.copy(alpha = 0.7f)
-        )
-
+        // MoshGrid: your name, plain and quiet under the title. Tap to edit.
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             textStyle = MaterialTheme.typography.bodyMedium.copy(
-                color = colorScheme.primary,
+                color = colorScheme.onSurfaceVariant,
                 fontFamily = BitchatFontFamily,
-                fontSize = HeaderTextSize
+                fontSize = 13.sp
             ),
             cursorBrush = SolidColor(colorScheme.primary),
             singleLine = true,
@@ -540,7 +586,7 @@ fun NicknameEditor(
             ),
             modifier = Modifier
                 .weight(1f)
-                .widthIn(max = 150.dp)
+                .widthIn(max = 200.dp)
                 .horizontalScroll(scrollState)
         )
     }
@@ -588,10 +634,12 @@ fun PeerCounter(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = modifier
-            .clip(HeaderClusterShape)
+            .clip(RoundedCornerShape(50))
+            .background(colorScheme.surface)
             .pressScaleClickable(onClick = onClick)
             .height(HeaderTapTarget)
-            .padding(horizontal = 6.dp)
+            .widthIn(min = HeaderTapTarget)
+            .padding(horizontal = 14.dp)
     ) {
         Icon(
             // The extracted people glyph stays legible at the compact header scale; the number
@@ -723,36 +771,21 @@ private fun MainHeader(
                 .padding(start = HeaderInsetStart, end = HeaderInsetEnd),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Keep the brand and trailing actions fixed. Only the nickname yields under pressure.
-            BitChatBrandButton(
-                onClick = if (com.bitchat.android.mosh.MoshFeatures.ABOUT) onTitleClick else ({}),
-                onTripleClick = onTripleTitleClick,
-                contentDescription = stringResource(R.string.cd_open_about),
-                modifier = Modifier.size(HeaderTapTarget),
-            )
-
-            // Nudge toward the brand glyph: the 44.dp tap target leaves more optical gap than the
-            // spacing between the mark and path label.
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            // MoshGrid: a plain bold title. Tap opens About, three quick taps still clear all
+            // data, exactly as the old brand glyph did. Your editable name sits under it.
+            Column(
                 modifier = Modifier
                     .weight(1f)
-                    .offset(x = (-6).dp)
+                    .padding(start = 8.dp)
             ) {
-                Text(
-                    text = "/",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontSize = HeaderTextSize,
-                    // Dimmed: the slash is a separator, not content. At full brightness it competed
-                    // with the nickname beside it.
-                    color = colorScheme.primary.copy(alpha = 0.45f),
-                    modifier = Modifier.padding(end = 2.dp)
+                MoshHeaderTitle(
+                    onClick = if (com.bitchat.android.mosh.MoshFeatures.ABOUT) onTitleClick else ({}),
+                    onTripleClick = onTripleTitleClick,
+                    contentDescription = stringResource(R.string.cd_open_about),
                 )
-
                 NicknameEditor(
                     value = nickname,
                     onValueChange = onNicknameChange,
-                    modifier = Modifier.weight(1f)
                 )
             }
 
@@ -885,4 +918,43 @@ private fun LocationChannelsButton(
             )
         }
     }
+}
+
+/** "MoshGrid" title with the old brand glyph's taps: one opens About, three clear all data. */
+@Composable
+private fun MoshHeaderTitle(
+    onClick: () -> Unit,
+    onTripleClick: () -> Unit,
+    contentDescription: String,
+) {
+    var tapCount by remember { mutableIntStateOf(0) }
+    var resetJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val scope = rememberCoroutineScope()
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnTripleClick by rememberUpdatedState(onTripleClick)
+    Text(
+        text = "MoshGrid",
+        fontSize = 24.sp,
+        fontWeight = FontWeight.ExtraBold,
+        color = MaterialTheme.colorScheme.onBackground,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(HeaderClusterShape)
+            .clickable(onClickLabel = contentDescription) {
+                tapCount += 1
+                resetJob?.cancel()
+                if (tapCount == 3) {
+                    tapCount = 0
+                    resetJob = null
+                    currentOnTripleClick()
+                } else {
+                    resetJob = scope.launch {
+                        kotlinx.coroutines.delay(300)
+                        if (tapCount == 1) currentOnClick()
+                        tapCount = 0
+                        resetJob = null
+                    }
+                }
+            }
+    )
 }

@@ -673,8 +673,7 @@ fun ChatInputSection(
             .fillMaxWidth()
             .background(colorScheme.background.copy(alpha = BarBackgroundAlpha))
     ) {
-        // Hairline marking where chrome begins. Faint on purpose — it is a hint, not a border.
-        HorizontalDivider(thickness = 1.dp, color = colorScheme.outlineVariant)
+        // MoshGrid: no hairline above the composer; the pill stands on its own.
 
         // Command suggestions box
         if (showCommandSuggestions && commandSuggestions.isNotEmpty()) {
