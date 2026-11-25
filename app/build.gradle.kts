@@ -236,11 +236,28 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
 
-// Robolectric resolves Android runtime jars itself (outside Gradle dependency resolution).
-// Its legacy repo1 endpoint rejects cold GitHub-hosted runners with HTTP 403.
+// Robolectric's own downloader fetches each Android runtime jar (about 200 MB) on first use and
+// fails on cold CI runners. Let Gradle fetch them instead (retries, cache, checksum verification)
+// and run Robolectric offline from that folder. One jar per SDK level the tests run on.
+// One configuration per jar: in a single one Gradle would keep only the highest version.
+val robolectricRuntimes = listOf(
+    "5.0.2_r3-robolectric-r0-i7",    // SDK 21, which some tests still load
+    "9-robolectric-4913185-2-i7",    // SDK 28
+    "12.1-robolectric-8229987-i7",   // SDK 32
+    "13-robolectric-9030017-i7",     // SDK 33
+    "15-robolectric-12650502-i7",    // SDK 35, the default for tests without @Config
+).map { version ->
+    configurations.create("robolectricRuntime" + version.substringBefore("-robolectric").replace(".", "_")) {
+        isTransitive = false
+    }.also { dependencies.add(it.name, "org.robolectric:android-all-instrumented:$version") }
+}
+val robolectricJars = layout.buildDirectory.dir("robolectric-jars")
+val fetchRobolectricJars by tasks.registering(Sync::class) {
+    from(robolectricRuntimes)
+    into(robolectricJars)
+}
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
-    systemProperty(
-        "robolectric.dependency.repo.url",
-        "https://repo.maven.apache.org/maven2"
-    )
+    dependsOn(fetchRobolectricJars)
+    systemProperty("robolectric.offline", "true")
+    systemProperty("robolectric.dependency.dir", robolectricJars.get().asFile.absolutePath)
 }
