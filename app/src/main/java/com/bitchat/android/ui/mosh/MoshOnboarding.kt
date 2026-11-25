@@ -116,6 +116,7 @@ fun MoshOnboarding(prefs: MoshPrefs, currentName: String = "", onName: (String) 
                 prefs.monitoringOptIn = monitoring; prefs.shareLocation = share
                 prefs.onboardingDone = true
                 com.bitchat.android.mosh.MoshNetworkGate.apply(context, prefs)
+                com.bitchat.android.mosh.monitor.Monitoring.init(context.applicationContext as android.app.Application, prefs)
                 onDone()
             },
             modifier = Modifier.fillMaxWidth().height(56.dp),

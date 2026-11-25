@@ -182,7 +182,7 @@
 
   <!-- About sheet: feature list -->
   <string name="about_no_tracking_title">No Tracking</string>
-  <string name="about_no_tracking_desc">No accounts, ads or data collection. Relays only pass on encrypted messages.</string>
+  <string name="about_no_tracking_desc">No accounts or ads. Relays only pass on encrypted messages. Crash reports are sent only if you turn them on.</string>
   <string name="about_ephemeral_title">Ephemeral Identity</string>
   <string name="about_ephemeral_desc">A new peer ID is generated regularly.</string>
   <string name="about_panic_desc">Triple-tap the logo to instantly clear all data.</string>

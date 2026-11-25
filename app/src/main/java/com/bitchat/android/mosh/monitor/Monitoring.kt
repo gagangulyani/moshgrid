@@ -35,7 +35,10 @@ object Scrubber {
 object Monitoring {
     @Volatile private var enabled = false
 
+    /** Safe to call again: starts reporting once, the first time it is allowed (app start or opt-in). */
+    @Synchronized
     fun init(app: Application, prefs: MoshPrefs) {
+        if (enabled) return
         val dsn = BuildConfig.SENTRY_DSN
         if (dsn.isBlank() || !sentryAllowed(prefs)) return
         SentryAndroid.init(app) { o ->

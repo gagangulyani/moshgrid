@@ -204,8 +204,11 @@ fun SettingsScreen() {
         Text("Location", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
         CheckRow("Share my location with friends", share) { share = it; prefs.shareLocation = it }
         Text("Problems", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
-        CheckRow("Send crash and problem reports (no personal data)", monitoring) { monitoring = it; prefs.monitoringOptIn = it }
-        Text("Changes to reporting apply after restarting the app.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        CheckRow("Send crash and problem reports (no personal data)", monitoring) {
+            monitoring = it; prefs.monitoringOptIn = it
+            com.bitchat.android.mosh.monitor.Monitoring.init(context.applicationContext as android.app.Application, prefs)
+        }
+        Text("Reports go to MoshGrid's own server. Turning this off stops them straight away.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         TextButton(onClick = {
             // Recording the share also creates the log, so the button works on a fresh install or after a wipe.
             MoshMonitor.event(context, "diagnostics_shared")
