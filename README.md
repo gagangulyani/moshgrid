@@ -45,7 +45,7 @@ The app built on top of it is a different product:
 |---|---|---|
 | Who you talk to | Anyone nearby, often strangers, in public rooms and location channels | Only friends you scanned in person |
 | What it's for | Open, anonymous chat | Finding your group at a gig and getting help |
-| Main screen | Chat | A map of the venue with your friends on it |
+| Main screen | Chat | Your friends, with a compass to find them one tap away |
 | Getting help | Not a feature | Hold-to-send Help that retries until friends get it and says who did |
 | Location | Coarse location channels shared with everyone in them | Your exact spot, shared only with your friends |
 
@@ -69,8 +69,8 @@ Release builds are signed with a key that is not in this repository. Crash repor
 The website lists the SHA-256 of each APK and of the signing certificate. Compare them with:
 
 ```sh
-shasum -a 256 MoshGrid-1.0.0.apk
-apksigner verify --print-certs MoshGrid-1.0.0.apk
+shasum -a 256 MoshGrid-1.1.1.apk
+apksigner verify --print-certs MoshGrid-1.1.1.apk
 ```
 
 ## Licence
