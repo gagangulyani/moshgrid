@@ -1,18 +1,51 @@
 # MoshGrid
 
-Find and message your friends at gigs and festivals, even when the phone network dies.
+Find your friends in the crowd, even when the phone network dies.
 
-MoshGrid phones talk to each other over Bluetooth, passing messages along from phone to phone, and use the internet too whenever there is any. You add friends in person by scanning QR codes, see where they are on a map, drop a meeting point, and press Help to send your location to everyone until it gets through.
+At a big gig, thousands of phones choke the network and your group scatters. MoshGrid lets the friends you came with see where each other are, message each other and call for help, phone to phone over Bluetooth when there is no signal, and over the internet whenever there is some.
 
-Download and install: **https://moshgrid.vercel.app** (Android 8 and newer).
+**Download for Android:** https://moshgrid.vercel.app (Android 8 and newer, free, no account)
 
-## How it works
+<table>
+  <tr>
+    <td><img src="website/img/friends.webp" alt="Friends tab listing friends and how recently each one was seen" width="200"/></td>
+    <td><img src="website/img/help_screen.webp" alt="Ask for help screen with a large Help button to hold for three seconds" width="200"/></td>
+    <td><img src="website/img/help_sent.webp" alt="Help sent screen saying which friends it reached and that it keeps retrying" width="200"/></td>
+    <td><img src="website/img/help_incoming.webp" alt="A friend's incoming Help alert with what to look for" width="200"/></td>
+  </tr>
+</table>
 
-- **Friends only.** Only people you have scanned can see your location or message you.
-- **Bluetooth mesh.** Messages hop through other MoshGrid phones in the crowd. No signal needed.
-- **Internet when available.** Messages are end-to-end encrypted (NIP-17 gift wraps) and passed through Nostr relays that cannot read them. MoshGrid runs its own relay first, with public relays as fallbacks.
-- **No accounts, no ads.** Crash reports are off unless you turn them on; if you do, they go to MoshGrid's own server with no location, messages, names or friends in them.
-- **Not an emergency service.** In danger, find venue staff or call 112.
+## What it does
+
+- **Find.** A map of the venue showing you and your friends, with how far away each one is and when their location was last updated. Venue maps ship inside the app, so the map works with no data at all.
+- **Help.** Hold the Help button for three seconds and your location, plus a note like "red cap, near the sound desk", goes to every friend. It keeps resending until it gets through and tells you plainly who it reached. Friends get an alarm-style alert, which can sound through Do Not Disturb if they allow it.
+- **Meeting points.** Drop a pin and your group gets it. Every phone that has it keeps passing it on for a while, so friends who were out of range get it when they come back.
+- **Friends-only chat.** Message the people you scanned, nobody else.
+- **Set up before the show.** You add friends in person by scanning each other's QR code. Only people you have scanned can see your location or message you.
+
+## How it gets messages through
+
+Every MoshGrid phone passes messages on to the next one over Bluetooth, so a message can hop across the crowd to a friend out of direct range. When any phone has internet, messages also go through MoshGrid's own Nostr relay, end-to-end encrypted, so the relay cannot read them. Sharing your location and using the internet can each be turned off in settings.
+
+Honest limits: Bluetooth reaches roughly across a large room between two phones, it works best when there are other MoshGrid phones in between, iPhone isn't supported yet, and MoshGrid is not an emergency service. In danger, find venue staff or call 112.
+
+## MoshGrid and bitchat
+
+MoshGrid is a fork of [bitchat-android](https://github.com/permissionlesstech/bitchat-android). We didn't build the mesh: the Bluetooth mesh, the Noise encryption and the Nostr transport all come from bitchat, and they are most of the code in this repository. bitchat's authors deserve the credit for that part.
+
+The app built on top of it is a different product:
+
+| | bitchat | MoshGrid |
+|---|---|---|
+| Who you talk to | Anyone nearby, often strangers, in public rooms and location channels | Only friends you scanned in person |
+| What it's for | Open, anonymous chat | Finding your group at a gig and getting help |
+| Main screen | Chat | A map of the venue with your friends on it |
+| Getting help | Not a feature | Hold-to-send Help that retries until friends get it and says who did |
+| Location | Coarse location channels shared with everyone in them | Your exact spot, shared only with your friends |
+
+What MoshGrid adds: Find with offline venue maps, friend location sharing, Help with retries and delivery status, meeting points, QR-only friends, a new four-tab interface, and battery guidance for keeping the app running all show (the `mosh` and `ui/mosh` packages).
+
+What MoshGrid hides or removes from bitchat: public mesh chat, location channels and the globe, voice notes, photos and files, Cashu payments and Tor. Phones still relay other MoshGrid phones' encrypted packets, so everyone in the crowd helps carry messages.
 
 ## Build
 
@@ -23,7 +56,7 @@ Requires JDK 21 and the Android SDK versions in `gradle/libs.versions.toml`.
 ./gradlew testDebugUnitTest
 ```
 
-Release builds are signed with a key that is not in this repository. Crash reporting is disabled unless you pass `-PsentryDsn=...`. See `AGENTS.md` for project conventions and `docs/` for protocol specs and the release guide.
+Release builds are signed with a key that is not in this repository. Crash reporting is off unless you build with `-PsentryDsn=...`, and in the app it stays off until the user turns it on. See `AGENTS.md` for project conventions and `docs/` for protocol specs and the release guide.
 
 ## Verify a download
 
@@ -34,116 +67,6 @@ shasum -a 256 MoshGrid-1.0.0.apk
 apksigner verify --print-certs MoshGrid-1.0.0.apk
 ```
 
-## Licence and credit
+## Licence
 
-MoshGrid is free software under the GNU General Public License v3 (see `LICENSE.md` and `NOTICE`). It is a fork of [bitchat-android](https://github.com/permissionlesstech/bitchat-android) by Permissionless Tech and contributors, which provides the Bluetooth mesh, Noise encryption and Nostr transport. MoshGrid adds friend finding, Help, meeting points and offline venue maps.
-
----
-
-Upstream README follows.
-
-<img width="256" height="256" alt="icon_128x128@2x" src="https://github.com/user-attachments/assets/90133f83-b4f6-41c6-aab9-25d0859d2a47" />
-
-## bitchat for Android
-
-A decentralized peer-to-peer messaging app with dual transport architecture: local Bluetooth mesh networks for offline communication and internet-based Nostr protocol for global reach. No accounts, no phone numbers, no central servers.
-
-This is the Android implementation of bitchat, fully protocol-compatible with the [iOS version](https://github.com/permissionlesstech/bitchat) for cross-platform mesh communication.
-
-[bitchat.free](http://bitchat.free)
-
-[GitHub Releases](https://github.com/permissionlesstech/bitchat-android/releases)
-
-[<img alt="Get it on Google Play" height="60" src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"/>](https://play.google.com/store/apps/details?id=com.bitchat.droid)
-
-## See it in action
-
-<table>
-  <tr>
-    <th>Offline mesh conversation</th>
-    <th>Geohash globe picker</th>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/readme-mesh-chat.png" alt="Active four-peer Bitchat mesh conversation with an image, voice messages, and text messages" width="360"/></td>
-    <td><img src="docs/screenshots/readme-geohash-globe.png" alt="Bitchat geohash location picker showing the whole Earth and geohash grid" width="360"/></td>
-  </tr>
-</table>
-
-## License
-
-This project is released into the public domain. See the [LICENSE](LICENSE.md) file for details.
-
-## Features
-
-- **Dual Transport Architecture**: Bluetooth LE mesh for offline messaging, Nostr relays for internet-based messaging
-- **Location-Based Channels**: Geographic chat rooms using geohash coordinates over Nostr relays
-- **Intelligent Message Routing**: Automatically chooses the best transport, with queuing and retry when a peer is unreachable
-- **End-to-End Encryption**: [Noise Protocol](https://noiseprotocol.org) (XX pattern, X25519 + ChaCha20-Poly1305) for private messages over the mesh
-- **Decentralized Mesh Network**: Automatic peer discovery and multi-hop relay over Bluetooth LE (max 7 hops)
-- **Wi-Fi Aware Transport**: Higher-bandwidth local mesh on supported devices
-- **Channel Chats**: Topic-based group messaging with optional password protection (Argon2id + AES-256-GCM)
-- **IRC-Style Commands**: Familiar `/join`, `/msg`, `/who` style interface
-- **Tor Support**: Built-in Tor (Arti) for private internet connectivity
-- **Emergency Wipe**: Triple-tap to instantly clear all data
-- **Cross-Platform**: Binary protocol compatible with bitchat on iOS and macOS
-
-## Technical Architecture
-
-### Bluetooth Mesh Network (Offline)
-
-- Direct peer-to-peer within Bluetooth range, multi-hop relay through nearby devices
-- Noise Protocol sessions with forward secrecy; peer identities derived from static keys
-- Compact binary packet format with fragmentation, TTL routing, and deduplication
-- Adaptive duty cycling and connection limits for battery efficiency
-- Foreground service keeps the mesh alive within Android background execution limits
-
-### Nostr Protocol (Internet)
-
-- Global reach via public relays, geohash-based location channels
-- Private messages fall back to Nostr for mutual favorites when the mesh is unavailable
-- Ephemeral keys per geohash area
-
-### Android Stack
-
-- Kotlin, Jetpack Compose (Material 3), MVVM
-- Coroutines and Flow for all networking and state
-- Core components: `MeshForegroundService` (persistent connectivity), `BluetoothMeshService` / `WifiAwareMeshService` (transports), `UnifiedMeshService` (transport selection), `NoiseSessionManager` (encryption sessions), `MessageRouter` (mesh/Nostr routing with outbox retry)
-
-## Building
-
-Requires Android Studio and the Android SDK (API 26+).
-
-```bash
-git clone https://github.com/permissionlesstech/bitchat-android.git
-cd bitchat-android
-./gradlew assembleDebug
-```
-
-Install on a connected device:
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-The app requests Bluetooth, location (required for BLE scanning), and notification permissions at runtime.
-
-Release APKs and the Android App Bundle can be rebuilt byte-for-byte in the
-pinned Linux container. Maintainers should follow the
-[Android release guide](docs/maintainer-release-guide.md). See
-[Reproducible builds](docs/reproducible-builds.md) for the build trust model
-and public GitHub/Google Play verification procedures.
-
-## Testing
-
-```bash
-# Unit tests
-./gradlew test
-
-# Lint
-./gradlew lint
-
-# Instrumented tests (requires a device or emulator)
-./gradlew connectedAndroidTest
-```
-
-Note that BLE mesh behavior is difficult to emulate; protocol and session logic is covered by unit tests, while radio-level behavior needs real devices.
+MoshGrid is free software under the GNU General Public License v3, the same licence as bitchat-android. See `LICENSE.md` and `NOTICE`.

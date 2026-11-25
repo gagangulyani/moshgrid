@@ -26,7 +26,7 @@ shutil.copy(REL / "app-universal-release.apk", uni)
 # Corresponding source (GPL-3.0): the committed tree, without the private planning docs.
 src = DIST / "downloads" / f"MoshGrid-{VERSION}-source.zip"
 subprocess.run(["git", "-C", str(ROOT), "archive", "--format=zip", f"--prefix=MoshGrid-{VERSION}/", "-o", str(src),
-                "HEAD", ":(exclude)docs/superpowers"], check=True)
+                "HEAD", ":(exclude)docs/superpowers", ":(exclude)docs/research"], check=True)
 
 bt = sorted((Path.home() / "Library/Android/sdk/build-tools").iterdir())[-1]
 certs = subprocess.run([str(bt / "apksigner"), "verify", "--print-certs", str(arm)], capture_output=True, text=True).stdout

@@ -286,12 +286,33 @@ footer p{max-width:none;margin:0}
   .phone{width:12.5rem}
   .chip-a{left:-2%}
   .chip-b{right:-2%}
-  .shots{grid-template-columns:repeat(4,15rem);overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:1rem;margin-right:-1.5rem;padding-right:1.5rem}
+  .shots{grid-template-columns:repeat(4,15rem);overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x pan-y;scroll-snap-type:x proximity;padding-bottom:1rem;margin-right:-1.5rem;padding-right:1.5rem}
   .shot{scroll-snap-align:start}
   .shot:nth-child(even){margin-top:0}
   .steps,.features,.install,.source,.mesh-head{grid-template-columns:1fr}
   #mesh{height:22rem}
   section{padding:4rem 0}
+}
+@media (max-width:600px){
+  .top{gap:.75rem}
+  .brand{font-size:1.1rem;gap:.45rem}
+  .brand svg{width:1.7rem;height:1.7rem}
+  .nav{gap:.9rem}
+  .gh span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .gh svg{width:1.5rem;height:1.5rem}
+  .pill-sm{white-space:nowrap;padding:.5rem .95rem;font-size:.88rem}
+  .stage{width:min(100%,19rem)}
+  .phone{width:11.5rem}
+  .phone-back{width:8.5rem}
+  .back-bob{animation:none;transform:translate(30%,-12%) rotate(8deg)}
+  .chip{font-size:.72rem;padding:.42rem .62rem}
+  .chip-c{display:none}
+  .chip-a{left:0;top:14%}
+  .chip-b{right:0;bottom:12%}
+  .facts{display:none}
+  .cta{flex-direction:column;align-items:stretch;gap:1.1rem}
+  .pill-lg{justify-content:center;white-space:nowrap}
+  .cta .alt{align-self:center}
 }
 </style>
 </head>
