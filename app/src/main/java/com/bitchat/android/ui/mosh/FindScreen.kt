@@ -367,9 +367,12 @@ private fun CompassView(
     val off = friends.filter { f -> f.status != FriendStatus.FRIEND || locations[f.peerID] == null }.map { f ->
         f.displayName + if (f.status != FriendStatus.FRIEND) " (hasn't added you yet)" else " (no location yet)"
     }
+    // The compass shrinks when banners (a friend's Help, a warning) take room, so "Phone facing" stays in view.
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+    val side = minOf(maxWidth - 40.dp, maxHeight - 96.dp, 330.dp).coerceAtLeast(180.dp)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Radar(blips, heading ?: 0.0, onPick)
+        Radar(blips, heading ?: 0.0, onPick, side)
         Spacer(Modifier.height(6.dp))
         Text(if (heading != null) "Phone facing ${compassWords(heading)}" else "Top of the circle is north",
             fontSize = 17.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
@@ -391,10 +394,11 @@ private fun CompassView(
         }
         Spacer(Modifier.height(12.dp))
     }
+    }
 }
 
 @Composable
-private fun Radar(blips: List<Blip>, headingDeg: Double, onPick: (String) -> Unit) {
+private fun Radar(blips: List<Blip>, headingDeg: Double, onPick: (String) -> Unit, maxSide: androidx.compose.ui.unit.Dp = 330.dp) {
     val reduce = reducedMotion()
     val line = MaterialTheme.colorScheme.outlineVariant
     val soft = MaterialTheme.colorScheme.onSurfaceVariant
@@ -408,7 +412,7 @@ private fun Radar(blips: List<Blip>, headingDeg: Double, onPick: (String) -> Uni
         androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1_800, easing = androidx.compose.animation.core.LinearEasing)),
         label = "ping")
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        val side = minOf(maxWidth, 330.dp)
+        val side = minOf(maxWidth, maxSide)
         val k = side.value / 330f
         Box(Modifier.size(side).semantics { contentDescription = "Compass: friends around you. The top is the way your phone is facing." }) {
             androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {

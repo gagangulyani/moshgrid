@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -164,7 +166,7 @@ fun NewGroupScreen(myName: String, onBack: () -> Unit, onCreated: (String) -> Un
 
 /** A group's chat. Your messages show WhatsApp-style ticks; tap one to see who has it and who read it. */
 @Composable
-fun GroupThreadScreen(groupId: String, onBack: () -> Unit, onInfo: () -> Unit) {
+fun GroupThreadScreen(groupId: String, onBack: () -> Unit, onInfo: () -> Unit, onFind: (String) -> Unit = {}, onAddPeople: () -> Unit = onInfo) {
     val groups by MoshGroups.store.groups.collectAsState()
     val g = groups.firstOrNull { it.id == groupId }
     DisposableEffect(groupId) {
@@ -179,6 +181,9 @@ fun GroupThreadScreen(groupId: String, onBack: () -> Unit, onInfo: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     var info by remember { mutableStateOf<StoredGroupMessage?>(null) }
     var draft by remember(groupId) { mutableStateOf("") }
+    var menu by remember { mutableStateOf(false) }
+    var findPeople by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf<String?>(null) } // "clear" or "leave"
     val list = rememberLazyListState()
     LaunchedEffect(g.messages.size) { if (g.messages.isNotEmpty()) list.animateScrollToItem(g.messages.size - 1) }
 
@@ -192,7 +197,27 @@ fun GroupThreadScreen(groupId: String, onBack: () -> Unit, onInfo: () -> Unit) {
                     Text(memberLine(g, me), fontSize = 13.sp, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
+            if (!g.closed) IconButton(onClick = { findPeople = true }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Outlined.Explore, contentDescription = "Find people in this group")
+            }
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                }
+                androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    @Composable fun item(label: String, color: Color? = null, go: () -> Unit) = androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(label, color = color ?: cs.onSurface) }, onClick = { menu = false; go() })
+                    item("Group info", go = onInfo)
+                    if (!g.closed) item("Find people") { findPeople = true }
+                    if (!g.closed && g.roster.creatorKeyHex == me) item("Add people", go = onAddPeople)
+                    item(if (g.muted) "Unmute notifications" else "Mute notifications") { MoshGroups.store.setMuted(groupId, !g.muted) }
+                    item("Clear chat") { confirm = "clear" }
+                    if (g.closed) item("Delete chat", cs.error) { confirm = "delete" } else item("Exit group", cs.error) { confirm = "leave" }
+                }
+            }
         }
+        if (g.muted) Text("Notifications are muted for this group. Help alerts still ring.", fontSize = 13.sp,
+            color = cs.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp))
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (g.messages.isEmpty()) item {
@@ -233,6 +258,75 @@ fun GroupThreadScreen(groupId: String, onBack: () -> Unit, onInfo: () -> Unit) {
         }
     }
     info?.let { m -> ReceiptSheet(g, g.messages.firstOrNull { it.id == m.id && it.fromKeyHex == m.fromKeyHex } ?: m) { info = null } }
+    if (findPeople) FindPeopleSheet(g, me, onFind = { findPeople = false; onFind(it) }) { findPeople = false }
+    confirm?.let { what ->
+        val (title, body, ok) = when (what) {
+            "clear" -> Triple("Clear this chat?", "Messages are deleted from this phone only. Everyone else keeps theirs.", "Clear chat")
+            "delete" -> Triple("Delete this chat?", "It's removed from this phone. You're already out of the group.", "Delete chat")
+            else -> Triple("Exit ${g.roster.name}?", "You stop getting its messages and can't send to it. The others are told you left.", "Exit group")
+        }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirm = null },
+            title = { Text(title) }, text = { Text(body) },
+            confirmButton = {
+                TextButton(onClick = {
+                    when (what) {
+                        "clear" -> MoshGroups.store.clearMessages(groupId)
+                        "delete" -> { MoshGroups.store.delete(groupId); onBack() }
+                        else -> MoshGroups.leave(groupId)
+                    }
+                    confirm = null
+                }) { Text(ok, color = cs.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** Everyone in the group with how far away they are; Find for friends (only friends share their location). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FindPeopleSheet(g: Group, me: String?, onFind: (String) -> Unit, onDismiss: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val friends = remember { MoshRuntime.friends.friends() }
+    val locations by MoshRuntime.store.locations.collectAsState()
+    val my by MoshRuntime.myLocation.collectAsState()
+    com.bitchat.android.core.ui.component.sheet.BitchatBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(top = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Find people", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text("Only friends who added you share where they are.", fontSize = 14.sp, color = cs.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp))
+            g.roster.members.filter { it.noiseKeyHex != me && it.noiseKeyHex !in g.left }.forEach { m ->
+                val f = friends.firstOrNull { it.noiseKeyHex == m.noiseKeyHex && it.status == FriendStatus.FRIEND }
+                val l = f?.let { locations[it.peerID] }
+                val line = when {
+                    f == null -> "Not your friend, so no location"
+                    l == null -> "No location yet"
+                    else -> {
+                        val mins = ((System.currentTimeMillis() - l.takenAtMs).coerceAtLeast(0) / 60_000)
+                        val age = if (mins < 1) "just now" else "$mins min ago"
+                        my?.let { me2 ->
+                            val d = com.bitchat.android.mosh.distanceM(me2.lat, me2.lon, l.lat, l.lon)
+                            (if (d < 1000) "${d.toInt()} m" else "%.1f km".format(d / 1000)) + " away · $age"
+                        } ?: "Location from $age"
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MoshAvatar(m.name, m.noiseKeyHex, 44.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text(m.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(line, fontSize = 14.sp, color = cs.onSurfaceVariant, maxLines = 1)
+                    }
+                    if (f != null && l != null) Box(Modifier.heightIn(min = 44.dp).clip(MoshShapes.Pill).background(cs.primary.copy(alpha = 0.16f))
+                        .clickable { onFind(f.peerID) }.padding(horizontal = 18.dp), contentAlignment = Alignment.Center) {
+                        Text("Find", color = cs.primary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun memberLine(g: Group, me: String?): String {

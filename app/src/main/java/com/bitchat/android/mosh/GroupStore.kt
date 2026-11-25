@@ -29,6 +29,8 @@ data class Group(
     /** True after I left, or after the creator took me out. The chat stays, read-only. */
     val closed: Boolean = false,
     val messages: List<StoredGroupMessage> = emptyList(),
+    /** No notifications for this group's messages (Help still rings: it is separate). */
+    val muted: Boolean = false,
 ) {
     val id: String get() = roster.groupId
     val unread: Int get() = messages.count { !it.seen && it.kind == GroupMessage.TEXT && it.status.isEmpty() }
@@ -183,6 +185,13 @@ class GroupStore(
         put(g.copy(closed = true))
         return GroupMessage(groupId, messageId, GroupMessage.LEFT, "", nowMs) to to
     }
+
+    @Synchronized
+    fun setMuted(groupId: String, muted: Boolean) { group(groupId)?.let { put(it.copy(muted = muted)) } }
+
+    /** Deletes this group's messages on this phone only. My undelivered ones stop retrying too. */
+    @Synchronized
+    fun clearMessages(groupId: String) { group(groupId)?.let { put(it.copy(messages = emptyList())) } }
 
     @Synchronized
     fun delete(groupId: String) {

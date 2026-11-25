@@ -155,7 +155,7 @@ object MoshGroups {
                     val sender = store.group(p.groupId)?.roster?.members?.firstOrNull { it.noiseKeyHex == fromKey } ?: return
                     send(GroupReceipt(p.groupId, p.messageId, read = false, atMs = System.currentTimeMillis()), sender)
                     if (_open.value == p.groupId) markSeen(p.groupId)
-                    else if (wasNew && p.kind == GroupMessage.TEXT) GroupNotifier.show(context, store.group(p.groupId) ?: return, sender.name, p.text)
+                    else if (wasNew && p.kind == GroupMessage.TEXT && store.group(p.groupId)?.muted != true) GroupNotifier.show(context, store.group(p.groupId) ?: return, sender.name, p.text)
                 }
             }
             is GroupReceipt -> store.applyReceipt(fromKey, p)

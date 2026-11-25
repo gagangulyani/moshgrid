@@ -85,6 +85,26 @@ object TestHookDriver {
             "mosh_demo" -> moshDemo(context, intent.getStringExtra("lat")?.toDoubleOrNull() ?: 28.4689, intent.getStringExtra("lon")?.toDoubleOrNull() ?: 77.0664, intent.getStringExtra("help") == "true")
             "mosh_help" -> moshHelp(context, intent.requiredString("action"))
             // Debug only: move my synthetic position (metres north/east of the public venue point) for screen recordings.
+            // Debug only: drive the demo group for screen recordings (sent, receipts, a reply).
+            "mosh_group" -> {
+                val g = com.bitchat.android.mosh.MoshGroups
+                val grp = g.store.group("demo-group")
+                val me = g.myKeyHex()
+                if (grp == null || me == null) err("mosh_group", "no demo group") else {
+                    val who = intent.getStringExtra("who").orEmpty()
+                    val member = grp.roster.members.firstOrNull { it.name == who }
+                    val mine = grp.messages.lastOrNull { it.fromKeyHex == me }
+                    val now = System.currentTimeMillis()
+                    when (intent.getStringExtra("action")) {
+                        "sent" -> mine?.status?.keys?.forEach { k -> g.store.markSent(grp.id, mine.id, k, now, overInternet = false) }
+                        "delivered", "read" -> if (member != null && mine != null) g.store.applyReceipt(member.noiseKeyHex,
+                            com.bitchat.android.mosh.GroupReceipt(grp.id, mine.id, intent.getStringExtra("action") == "read", now))
+                        "reply" -> if (member != null) g.store.applyMessage(member.noiseKeyHex, com.bitchat.android.mosh.GroupMessage(
+                            grp.id, java.util.UUID.randomUUID().toString().take(12), 0, intent.getStringExtra("text").orEmpty(), now), now)
+                    }
+                    ok("mosh_group")
+                }
+            }
             "mosh_me" -> {
                 val lat0 = 28.4689; val lon0 = 77.0664
                 val n = intent.getStringExtra("n")?.toDoubleOrNull() ?: 0.0

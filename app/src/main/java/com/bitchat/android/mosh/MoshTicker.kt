@@ -55,7 +55,8 @@ class MoshTicker(private val context: Context, private val scope: CoroutineScope
     private fun sharerBattery(): Int = MoshRuntime.myLocation.value?.batteryPct ?: 0
 }
 
-data class StopNotice(val stoppedAtMs: Long, val unreachableMinutes: Long, val reason: String)
+data class StopNotice(val stoppedAtMs: Long, val unreachableMinutes: Long, val reason: String,
+                      val cause: com.bitchat.android.mosh.monitor.StopCause = com.bitchat.android.mosh.monitor.StopCause.UNKNOWN)
 
 /** On app start: work out whether MoshGrid was stopped or frozen while the user thought it was on. */
 object MoshStartup {
@@ -67,11 +68,19 @@ object MoshStartup {
         val gap = hb.gapOnStartMs() ?: return
         val reason = lastExitReason(context)
         val minutes = gap / 60_000
-        MoshRuntime.reportStop(StopNotice(last ?: 0L, minutes, reason))
+        val bootedAt = System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime()
+        val cause = com.bitchat.android.mosh.monitor.stopCause(lastExitCode(context), last, bootedAt)
+        MoshRuntime.reportStop(StopNotice(last ?: 0L, minutes, reason, cause))
         MoshMonitor.event(context, "app_stopped", minutes.toInt())
         if (MoshRuntime.isInitialised && sentryAllowed(MoshRuntime.prefs)) {
             com.bitchat.android.mosh.monitor.Monitoring.report("app_stopped", minutes.toInt())
         }
+    }
+
+    private fun lastExitCode(context: Context): Int? {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return null
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return null
+        return runCatching { am.getHistoricalProcessExitReasons(context.packageName, 0, 1).firstOrNull()?.reason }.getOrNull()
     }
 
     private fun lastExitReason(context: Context): String {

@@ -200,4 +200,16 @@ class MoshGroupsTest {
         GroupStore({ me.noiseKeyHex }, p).applyRoster(priya.noiseKeyHex, true, roster())
         assertEquals("Camp crew", GroupStore({ me.noiseKeyHex }, p).group("g-1")!!.roster.name)
     }
+
+    @Test fun mute_and_clear_are_local() {
+        val s = store()
+        s.applyRoster(priya.noiseKeyHex, true, roster())
+        s.applyMessage(jo.noiseKeyHex, GroupMessage("g-1", "m-1", GroupMessage.TEXT, "hi", 10), 11)
+        s.setMuted("g-1", true)
+        assertTrue(s.group("g-1")!!.muted)
+        s.clearMessages("g-1")
+        assertTrue(s.group("g-1")!!.messages.isEmpty())
+        assertEquals(3, s.group("g-1")!!.roster.members.size)
+        assertTrue(s.group("g-1")!!.muted)
+    }
 }

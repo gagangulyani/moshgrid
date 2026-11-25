@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Group
@@ -99,6 +100,8 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
     var findMeeting by remember { mutableStateOf(false) }
     val help by MoshRuntime.store.activeHelp.collectAsState()
     val stop by MoshRuntime.lastStop.collectAsState()
+    var hiddenHelp by remember { mutableStateOf(emptyMap<String, Long>()) }
+    val context = LocalContext.current
     var clockNow by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(30_000); clockNow = System.currentTimeMillis() } }
     val showVerification by chatViewModel.showVerificationSheet.collectAsState()
@@ -124,6 +127,8 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
         if (ownHelpOn && tab != HomeTab.FIND) {
             Banner("Your Help is on", "Friends get an alert every minute or two.", Tone.HELP, action = "Open") { showHelp = true }
         }
+        // Hidden alerts come back as soon as that friend sends a newer one (their Help keeps updating).
+        val help = help.filter { (peer, h) -> hiddenHelp[peer] != h.raisedAtMs }
         if (help.isNotEmpty()) {
             val names = help.keys.joinToString { MoshRuntime.friends.displayName(it) ?: "A friend" }
             // Help is never cleared by time: a phone that stops sending may be the emergency. Show the age instead.
@@ -132,15 +137,46 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
             val age = if (mins < 3) null else "Updated $mins min ago"
             val note = help.values.maxByOrNull { it.raisedAtMs }?.note?.takeIf { it.isNotBlank() }?.let { "Look for: $it" }
             val line = listOfNotNull(note, age).joinToString(" · ").ifEmpty { null }
-            Banner("$names asked for help", line, Tone.HELP, action = "Find") {
+            Banner("$names asked for help", line, Tone.HELP, action = "Find",
+                onClose = { hiddenHelp = hiddenHelp + help.mapValues { it.value.raisedAtMs } }) {
                 goFind(help.maxByOrNull { it.value.raisedAtMs }?.key, false)
             }
         }
         RadioBanners()
         stop?.let { s ->
             val at = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(s.stoppedAtMs))
-            Banner("MoshGrid stopped at $at", "${s.reason}. Unreachable for ${s.unreachableMinutes} min. Check battery settings.",
-                Tone.WARN) { MoshRuntime.reportStop(null) }
+            // Why it stopped in plain words, and the one thing to do about it. Our bugs get a Report button.
+            val (why, action) = when (s.cause) {
+                com.bitchat.android.mosh.monitor.StopCause.PHONE_RESTARTED -> "Your phone was off or restarted." to "OK"
+                com.bitchat.android.mosh.monitor.StopCause.UPDATED -> "MoshGrid was updating." to "OK"
+                com.bitchat.android.mosh.monitor.StopCause.BATTERY -> "Your phone closed it to save battery or memory. Let MoshGrid run in the background so friends can reach you." to "Fix"
+                com.bitchat.android.mosh.monitor.StopCause.FORCE_STOPPED -> "It was force-stopped, in Settings or by a cleaner app. Leave it running at the gig." to "OK"
+                com.bitchat.android.mosh.monitor.StopCause.PERMISSION_CHANGED -> "A permission was changed in Settings, so Android restarted it." to "OK"
+                com.bitchat.android.mosh.monitor.StopCause.CRASHED -> "MoshGrid crashed. That's our bug: please report it." to "Report"
+                com.bitchat.android.mosh.monitor.StopCause.FROZE -> "MoshGrid froze and Android closed it. That's our bug: please report it." to "Report"
+                com.bitchat.android.mosh.monitor.StopCause.UNKNOWN -> "We couldn't tell why. If you didn't close it, please report it." to "Report"
+            }
+            Banner("MoshGrid was off for ${s.unreachableMinutes} min", "Stopped at $at. $why", Tone.WARN, action = action) {
+                MoshRuntime.reportStop(null)
+                when (action) {
+                    "Fix" -> runCatching {
+                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            android.net.Uri.parse("package:" + context.packageName)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }.onFailure {
+                        runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    }
+                    // Only the cause and version go in the link: nothing about the phone or the person.
+                    "Report" -> runCatching {
+                        val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty()
+                        val title = java.net.URLEncoder.encode("MoshGrid stopped: ${s.cause.name.lowercase().replace('_', ' ')} ($version)", "UTF-8")
+                        val body = java.net.URLEncoder.encode("What were you doing when it stopped?\n\nDid it happen more than once?\n", "UTF-8")
+                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://github.com/gagangulyani/moshgrid/issues/new?title=$title&body=$body"))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }
+            }
         }
     }
 
@@ -153,7 +189,8 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
             groupOpen != null && groupInfo -> GroupInfoScreen(groupOpen!!, onBack = { groupInfo = false },
                 onFind = { peer -> groupInfo = false; groupOpen = null; goFind(peer, false) },
                 onDeleted = { groupInfo = false; groupOpen = null })
-            groupOpen != null -> GroupThreadScreen(groupOpen!!, onBack = { groupOpen = null }, onInfo = { groupInfo = true })
+            groupOpen != null -> GroupThreadScreen(groupOpen!!, onBack = { groupOpen = null }, onInfo = { groupInfo = true },
+                onFind = { peer -> groupOpen = null; goFind(peer, false) })
             page == Page.FRIENDS -> MoshPage("Friends", { if (friendOpen != null) friendOpen = null else page = null }) {
                 FriendsScreen(onAddFriend = { chatViewModel.showVerificationSheet() },
                     onChat = { peer -> chatViewModel.showPrivateChatSheet(peer) },
@@ -378,7 +415,7 @@ private fun RadioBanners() {
 
 /** In-app banner as a rounded tile: bold title, at most one short line, and one pill action. */
 @Composable
-private fun Banner(title: String, line: String?, tone: Tone, action: String = "OK", onTap: () -> Unit) {
+private fun Banner(title: String, line: String?, tone: Tone, action: String = "OK", onClose: (() -> Unit)? = null, onTap: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val bg = when (tone) {
         Tone.HELP -> MoshColors.Red
@@ -399,6 +436,11 @@ private fun Banner(title: String, line: String?, tone: Tone, action: String = "O
             colors = if (tone == Tone.HELP) ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)
             else ButtonDefaults.buttonColors(containerColor = cs.primary, contentColor = cs.onPrimary)) {
             Text(action, fontWeight = FontWeight.Bold)
+        }
+        if (onClose != null) {
+            androidx.compose.material3.IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+                androidx.compose.material3.Icon(Icons.Filled.Close, contentDescription = "Hide this alert", tint = fg)
+            }
         }
     }
 }
