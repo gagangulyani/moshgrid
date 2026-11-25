@@ -1,6 +1,7 @@
 package com.bitchat.android.ui
 
 import android.app.Application
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.bitchat.android.R
 import com.bitchat.android.util.ApkDownloader
@@ -12,9 +13,12 @@ import com.bitchat.android.util.UniversalApkManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -37,6 +41,7 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 class ApkDownloadViewModelTest {
     private lateinit var application: Application
+    private val viewModels = mutableListOf<ApkDownloadViewModel>()
 
     @Before
     fun setUp() {
@@ -46,8 +51,13 @@ class ApkDownloadViewModelTest {
 
     @After
     fun tearDown() {
+        // ViewModel work still running on Dispatchers.IO would hop back to Main while resetMain
+        // swaps it, which kotlinx-coroutines-test reports as concurrent use. Stop it first.
+        runBlocking { viewModels.forEach { it.viewModelScope.coroutineContext.job.cancelAndJoin() } }
         Dispatchers.resetMain()
     }
+
+    private fun tracked(viewModel: ApkDownloadViewModel) = viewModel.also { viewModels += it }
 
     @Test
     fun `local apk is shareable before release metadata starts`() = runTest {
@@ -61,7 +71,7 @@ class ApkDownloadViewModelTest {
                 return Result.failure(IllegalStateException("synthetic offline response"))
             }
         }
-        viewModel = ApkDownloadViewModel(application, manager, downloader, metadata)
+        viewModel = tracked(ApkDownloadViewModel(application, manager, downloader, metadata))
 
         viewModel.onEvent(ApkUiEvent.CheckStatus)
         val ready = awaitReady(viewModel)
@@ -74,12 +84,7 @@ class ApkDownloadViewModelTest {
     fun `notification cancellation returning idle restores shareable fallback`() = runTest {
         val manager = managerWithLocalApk()
         val downloader = FakeDownloader()
-        val viewModel = ApkDownloadViewModel(
-            application,
-            manager,
-            downloader,
-            offlineMetadata()
-        )
+        val viewModel = tracked(ApkDownloadViewModel(application, manager, downloader, offlineMetadata()))
 
         viewModel.onEvent(ApkUiEvent.CheckStatus)
         val originalReady = awaitReady(viewModel)
@@ -99,12 +104,7 @@ class ApkDownloadViewModelTest {
         val manager = mock<UniversalApkManager>()
         whenever(manager.getCachedApkInfo()).thenReturn(null)
         val downloader = FakeDownloader()
-        val viewModel = ApkDownloadViewModel(
-            application,
-            manager,
-            downloader,
-            offlineMetadata()
-        )
+        val viewModel = tracked(ApkDownloadViewModel(application, manager, downloader, offlineMetadata()))
 
         downloader.emit(
             ApkDownloader.DownloadState.Failed(
@@ -124,12 +124,7 @@ class ApkDownloadViewModelTest {
         val manager = mock<UniversalApkManager>()
         whenever(manager.getCachedApkInfo()).thenReturn(null)
         val downloader = FakeDownloader()
-        val viewModel = ApkDownloadViewModel(
-            application,
-            manager,
-            downloader,
-            offlineMetadata()
-        )
+        val viewModel = tracked(ApkDownloadViewModel(application, manager, downloader, offlineMetadata()))
 
         downloader.emit(
             ApkDownloader.DownloadState.Failed(
@@ -158,12 +153,7 @@ class ApkDownloadViewModelTest {
                 )
             )
 
-            val viewModel = ApkDownloadViewModel(
-                application,
-                manager,
-                downloader,
-                offlineMetadata()
-            )
+            val viewModel = tracked(ApkDownloadViewModel(application, manager, downloader, offlineMetadata()))
 
             val restored = viewModel.state.value.apkStatus as ApkPreparationStatus.Downloading
             assertNull(restored.shareableFallback)
@@ -179,12 +169,7 @@ class ApkDownloadViewModelTest {
     fun `adopting a local apk never displaces the fallback a download already carries`() = runTest {
         val manager = managerWithLocalApk()
         val downloader = FakeDownloader()
-        val viewModel = ApkDownloadViewModel(
-            application,
-            manager,
-            downloader,
-            offlineMetadata()
-        )
+        val viewModel = tracked(ApkDownloadViewModel(application, manager, downloader, offlineMetadata()))
 
         viewModel.onEvent(ApkUiEvent.CheckStatus)
         val originalReady = awaitReady(viewModel)
