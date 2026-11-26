@@ -67,6 +67,35 @@ data class GroupMessage(
 data class GroupReceipt(val groupId: String, val messageId: String, val read: Boolean, val atMs: Long) : MoshPayload
 
 /**
+ * My profile photo, for friends only: a small square JPEG ([MoshCodec.MAX_PHOTO_BYTES] at most).
+ * Empty [jpeg] means I removed it. The newest [updatedAtMs] from a friend wins.
+ */
+class ProfilePhoto(val updatedAtMs: Long, val jpeg: ByteArray) : MoshPayload {
+    override fun equals(other: Any?) = other is ProfilePhoto && other.updatedAtMs == updatedAtMs && other.jpeg.contentEquals(jpeg)
+    override fun hashCode() = 31 * updatedAtMs.hashCode() + jpeg.contentHashCode()
+    override fun toString() = "ProfilePhoto(updatedAtMs=$updatedAtMs, ${jpeg.size} bytes)"
+}
+
+/**
+ * Adding a friend by invite link, over Nostr only. [REQUEST]: someone with my link asks to be added
+ * (their keys and name, my link's token). [ACCEPT]: the link's owner said yes (their keys and name, same token).
+ */
+class FriendInvite(
+    val kind: Int,
+    val token: ByteArray,
+    val noiseKeyHex: String,
+    val nostrPubHex: String,
+    val name: String,
+    val atMs: Long,
+) : MoshPayload {
+    override fun equals(other: Any?) = other is FriendInvite && other.kind == kind && other.token.contentEquals(token) &&
+        other.noiseKeyHex == noiseKeyHex && other.nostrPubHex == nostrPubHex && other.name == name && other.atMs == atMs
+    override fun hashCode() = token.contentHashCode() * 31 + noiseKeyHex.hashCode()
+    override fun toString() = "FriendInvite(kind=$kind, name=$name)"
+    companion object { const val REQUEST = 0; const val ACCEPT = 1; const val TOKEN_BYTES = 16 }
+}
+
+/**
  * Wire format: version byte (1), then fixed fields in order. Doubles and longs big-endian,
  * strings as u8 length + UTF-8. Decoding is fail-closed: anything malformed or out of range is null.
  */
@@ -77,6 +106,7 @@ object MoshCodec {
     const val MAX_NOTE_BYTES = 140
     const val MAX_GROUP_TEXT_BYTES = 500
     const val MAX_GROUP_MEMBERS = 12
+    const val MAX_PHOTO_BYTES = 12 * 1024
 
     fun encode(p: MoshPayload): NoisePayload {
         require(isValid(p)) { "invalid MoshGrid payload: $p" }
@@ -124,6 +154,15 @@ object MoshCodec {
                 out.str(p.groupId); out.str(p.messageId); out.writeBoolean(p.read); out.writeLong(p.atMs)
                 NoisePayloadType.GROUP_RECEIPT
             }
+            is FriendInvite -> {
+                out.writeByte(p.kind); out.write(p.token); out.key(p.noiseKeyHex); out.key(p.nostrPubHex); out.str(p.name)
+                out.writeLong(p.atMs)
+                NoisePayloadType.FRIEND_INVITE
+            }
+            is ProfilePhoto -> {
+                out.writeLong(p.updatedAtMs); out.writeShort(p.jpeg.size); out.write(p.jpeg)
+                NoisePayloadType.PROFILE_PHOTO
+            }
         }
         out.flush()
         return NoisePayload(type, bytes.toByteArray())
@@ -158,6 +197,14 @@ object MoshCodec {
                     else { val b = ByteArray(len); input.readFully(b); GroupMessage(id, msg, kind, String(b, Charsets.UTF_8), input.readLong()) }
                 }
                 NoisePayloadType.GROUP_RECEIPT -> GroupReceipt(input.str(), input.str(), input.readBoolean(), input.readLong())
+                NoisePayloadType.FRIEND_INVITE -> {
+                    val kind = input.readUnsignedByte(); val t = ByteArray(FriendInvite.TOKEN_BYTES); input.readFully(t)
+                    FriendInvite(kind, t, input.key(), input.key(), input.str(), input.readLong())
+                }
+                NoisePayloadType.PROFILE_PHOTO -> {
+                    val at = input.readLong(); val len = input.readUnsignedShort()
+                    if (len > MAX_PHOTO_BYTES) null else { val b = ByteArray(len); input.readFully(b); ProfilePhoto(at, b) }
+                }
                 else -> null
             }
             p?.takeIf { input.available() == 0 && isValid(it) }
@@ -168,7 +215,7 @@ object MoshCodec {
 
     fun isMoshType(type: NoisePayloadType): Boolean = type == NoisePayloadType.LOCATION ||
         type == NoisePayloadType.MEETING_POINT || type == NoisePayloadType.HELP || type == NoisePayloadType.HELP_CANCEL ||
-        isGroupType(type)
+        type == NoisePayloadType.PROFILE_PHOTO || type == NoisePayloadType.FRIEND_INVITE || isGroupType(type)
 
     fun isGroupType(type: NoisePayloadType): Boolean = type == NoisePayloadType.GROUP_ROSTER ||
         type == NoisePayloadType.GROUP_MESSAGE || type == NoisePayloadType.GROUP_RECEIPT
@@ -194,6 +241,12 @@ object MoshCodec {
         is GroupMessage -> validId(p.groupId) && validId(p.messageId) && fits(p.text, MAX_GROUP_TEXT_BYTES) &&
             when (p.kind) { GroupMessage.TEXT -> p.text.isNotBlank(); GroupMessage.LEFT -> p.text.isEmpty(); else -> false }
         is GroupReceipt -> validId(p.groupId) && validId(p.messageId)
+        is FriendInvite -> (p.kind == FriendInvite.REQUEST || p.kind == FriendInvite.ACCEPT) &&
+            p.token.size == FriendInvite.TOKEN_BYTES && HEX_KEY.matches(p.noiseKeyHex) && HEX_KEY.matches(p.nostrPubHex) &&
+            p.name.isNotBlank() && fits(p.name, MAX_LABEL_BYTES) && p.atMs > 0
+        // A JPEG starts FF D8 FF. Whether it really decodes to a small square is checked before it is kept.
+        is ProfilePhoto -> p.updatedAtMs > 0 && p.jpeg.size <= MAX_PHOTO_BYTES && (p.jpeg.isEmpty() ||
+            (p.jpeg.size >= 3 && p.jpeg[0] == 0xFF.toByte() && p.jpeg[1] == 0xD8.toByte() && p.jpeg[2] == 0xFF.toByte()))
     }
 
     /** A 32-byte key, written raw. Hex in memory is lowercase. */

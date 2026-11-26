@@ -117,6 +117,8 @@ private const val RED = "#E8222B"
 private const val GREY = "#6E6E6E"
 
 /** Background-only style: venue features come from the bundled GeoJSON, so no tiles or glyphs are needed. */
+/** OpenFreeMap: free street tiles, no account or tracking. Only used outside the built-in venue maps, with Internet on. */
+private const val STREET_STYLE = "https://tiles.openfreemap.org/styles/dark"
 private const val BASE_STYLE = """{"version":8,"sources":{},"layers":[{"id":"bg","type":"background","paint":{"background-color":"#050505"}}]}"""
 
 /** The three ways to look for friends, as tabs under the Find title. */
@@ -195,22 +197,42 @@ fun FindScreen(
                 val venue = VenueRegistry.around(pins.sortedByDescending { it.color == CYAN }.map { it.lat to it.lon }, venues)
                     ?: venues.firstOrNull().takeIf { pins.isEmpty() }
                 var fitRequest by remember { mutableIntStateOf(0) }
+                var streetFailed by remember { mutableStateOf(false) }
+                val streetMap = venue == null && MoshRuntime.prefs.internet && !streetFailed
                 Box(Modifier.fillMaxWidth().weight(1f)) {
-                    VenueMap(venue = venue, pins = pins, fitRequest = fitRequest, onLongPress = { longPress = it })
+                    VenueMap(venue = venue, pins = pins, fitRequest = fitRequest, streetMap = streetMap,
+                        onStreetMapFailed = { if (venue == null) streetFailed = true }, onLongPress = { longPress = it })
                     if (venue != null) MapChip(venue.name, Modifier.align(Alignment.TopStart).padding(12.dp), bold = true)
                     if (pins.isNotEmpty()) {
                         MapChip("Show everyone", Modifier.align(Alignment.TopEnd).padding(12.dp), bold = true, onClick = { fitRequest++ })
                     }
                     MapLegend(pins, Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 34.dp))
+                    // Maps are built in for festival grounds only (downloading one would tell a server where you are).
+                    // Anywhere else there is nothing to draw but dots, so say so instead of showing a black screen.
+                    if (venue == null && !streetMap) {
+                        Column(Modifier.align(Alignment.Center).padding(24.dp).clip(MoshShapes.Card)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)).padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("No map for this place", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                            Text((if (streetFailed) "The street map couldn't load. Check your connection. "
+                                else "Street maps need Internet on (Network). ") +
+                                "Festival grounds work offline: " + venues.joinToString { it.name } + ".",
+                                fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Here, the dots still show where friends are around you. The compass is easier to read.",
+                                fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            FindPill("Use the compass") { view = FindView.COMPASS }
+                        }
+                    }
                     Text(
-                        "© OpenStreetMap contributors",
+                        if (streetMap) "OpenFreeMap © OpenMapTiles © OpenStreetMap" else "© OpenStreetMap contributors",
                         fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
                 }
-                Text("Press and hold the map to set a meeting point.", fontSize = 13.sp,
+                Text(if (streetMap) "Street map from OpenFreeMap: it sees your internet address and the area you look at. Press and hold to set a meeting point."
+                    else "Press and hold the map to set a meeting point.", fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp))
             }
@@ -399,6 +421,7 @@ private fun CompassView(
 
 @Composable
 private fun Radar(blips: List<Blip>, headingDeg: Double, onPick: (String) -> Unit, maxSide: androidx.compose.ui.unit.Dp = 330.dp) {
+    val photos by com.bitchat.android.mosh.ProfilePhotos.images.collectAsState()
     val reduce = reducedMotion()
     val line = MaterialTheme.colorScheme.outlineVariant
     val soft = MaterialTheme.colorScheme.onSurfaceVariant
@@ -467,8 +490,15 @@ private fun Radar(blips: List<Blip>, headingDeg: Double, onPick: (String) -> Uni
                         }
                         Box(Modifier.size(40.dp).rotate(if (b.place) 45f else 0f).clip(shape).background(b.color).border(3.dp, bg, shape),
                             contentAlignment = Alignment.Center) {
-                            Text(initials(if (b.place) "M P" else b.name), color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                                modifier = Modifier.rotate(if (b.place) -45f else 0f))
+                            val photo = if (b.place) null else photos[b.id]
+                            if (photo != null) {
+                                androidx.compose.foundation.Image(photo, contentDescription = null,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    alpha = if (b.stale) 0.55f else 1f, modifier = Modifier.fillMaxSize())
+                            } else {
+                                Text(initials(if (b.place) "M P" else b.name), color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                                    modifier = Modifier.rotate(if (b.place) -45f else 0f))
+                            }
                         }
                     }
                     Text(if (b.place) "Meeting point" else "${b.name} · $dist", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
@@ -533,7 +563,8 @@ private fun buildPins(
 }
 
 @Composable
-private fun VenueMap(venue: Venue?, pins: List<Pin>, fitRequest: Int, onLongPress: (LatLng) -> Unit) {
+private fun VenueMap(venue: Venue?, pins: List<Pin>, fitRequest: Int, streetMap: Boolean, onStreetMapFailed: () -> Unit,
+                     onLongPress: (LatLng) -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember {
@@ -565,19 +596,30 @@ private fun VenueMap(venue: Venue?, pins: List<Pin>, fitRequest: Int, onLongPres
             m.uiSettings.isAttributionEnabled = false
             m.uiSettings.isLogoEnabled = false
             m.addOnMapLongClickListener { onLongPress(it); true }
-            m.setStyle(Style.Builder().fromJson(BASE_STYLE)) { style ->
-                style.addSource(GeoJsonSource("pins"))
-                style.addLayer(CircleLayer("pins", "pins").withProperties(
-                    PropertyFactory.circleColor(Expression.get("color")),
-                    PropertyFactory.circleRadius(Expression.get("radius")),
-                    PropertyFactory.circleStrokeColor(Expression.get("stroke")),
-                    PropertyFactory.circleStrokeWidth(2.5f),
-                ))
-                styleReady = style
+            mapView.addOnDidFailLoadingMapListener {
+                com.bitchat.android.mosh.MoshMonitor.event(context, "map_failed")
+                onStreetMapFailed()
             }
         }
         mapView
     }, modifier = Modifier.fillMaxSize())
+
+    // Built-in venue maps never touch the network. Elsewhere, with Internet on, street tiles come from OpenFreeMap.
+    LaunchedEffect(map, streetMap) {
+        val m = map ?: return@LaunchedEffect
+        styleReady = null
+        val builder = if (streetMap) Style.Builder().fromUri(STREET_STYLE) else Style.Builder().fromJson(BASE_STYLE)
+        m.setStyle(builder) { style ->
+            style.addSource(GeoJsonSource("pins"))
+            style.addLayer(CircleLayer("pins", "pins").withProperties(
+                PropertyFactory.circleColor(Expression.get("color")),
+                PropertyFactory.circleRadius(Expression.get("radius")),
+                PropertyFactory.circleStrokeColor(Expression.get("stroke")),
+                PropertyFactory.circleStrokeWidth(2.5f),
+            ))
+            styleReady = style
+        }
+    }
 
     // Venue drawing follows the venue (it changes when your first fix arrives or you walk to another one).
     LaunchedEffect(styleReady, venue?.id) {
@@ -620,7 +662,8 @@ private fun replaceVenueLayers(context: Context, style: Style, venue: Venue?) {
     VENUE_LAYERS.forEach { style.removeLayer(it) }
     style.removeSource("venue")
     venue ?: return
-    val json = runCatching { context.assets.open(venue.asset).bufferedReader().use { it.readText() } }.getOrNull() ?: return
+    val json = runCatching { context.assets.open(venue.asset).bufferedReader().use { it.readText() } }.getOrNull()
+        ?: return com.bitchat.android.mosh.MoshMonitor.event(context, "venue_map_missing")
     style.addSource(GeoJsonSource("venue", json))
     fun kind(k: String) = Expression.eq(Expression.get("kind"), Expression.literal(k))
     fun add(layer: org.maplibre.android.style.layers.Layer) = style.addLayerBelow(layer, "pins")
@@ -671,7 +714,7 @@ private fun FriendList(friends: List<Friend>, locations: Map<String, LocationUpd
             val heard = lastHeard[f.peerID]
             val stale = l != null && now - l.takenAtMs > 600_000
             val line = when {
-                f.status == FriendStatus.WAITING_FOR_THEM -> "Waiting for them to scan you"
+                f.status == FriendStatus.WAITING_FOR_THEM -> "Waiting for them to add you"
                 l == null -> "No location yet"
                 else -> {
                     val dist = me?.let { metres(distanceM(it.lat, it.lon, l.lat, l.lon)) + " · " } ?: ""

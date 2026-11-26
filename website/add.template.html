@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add me on MoshGrid</title>
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/poi.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; background: #000; color: #fff; font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         display: grid; place-items: center; }
+  main { width: min(420px, calc(100% - 40px)); padding: 32px 0; }
+  img.logo { width: 64px; height: 64px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 20px 0 8px; font-weight: 800; }
+  p { color: #BDBDBD; margin: 0 0 18px; }
+  a.btn { display: block; text-align: center; text-decoration: none; font-weight: 800; border-radius: 999px; padding: 16px 20px; margin: 12px 0; }
+  a.primary { background: #C6FF3D; color: #000; }
+  a.secondary { background: #1A1A1A; color: #fff; }
+  a:focus-visible { outline: 3px solid #3DF2FF; outline-offset: 3px; }
+  .small { font-size: 14px; color: #8A8A8A; }
+  .bad { color: #FF8A80; }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="/poi.svg" alt="">
+  <h1 id="title">Add me on MoshGrid</h1>
+  <p id="lead">Open this in MoshGrid to send a friend request. Once it's accepted, you can find each other at the gig, even with no signal.</p>
+  <a class="btn primary" id="open" href="moshgrid://add">Open in MoshGrid</a>
+  <a class="btn secondary" href="/#install">Get MoshGrid for Android (v{{VERSION}})</a>
+  <p class="small">Don't have it yet? Install it, then come back and tap this link again.</p>
+  <p class="small">This page never sends the invite code anywhere: it stays after the # in the address, which browsers keep on your phone.</p>
+</main>
+<script>
+  // The code lives in the fragment, so it never reaches this website's server.
+  var code = location.hash.slice(1);
+  var ok = /^[A-Za-z0-9_-]{100,220}$/.test(code);
+  if (ok) {
+    document.getElementById("open").href = "moshgrid://add#" + code;
+    try {
+      var b = atob(code.replace(/-/g, "+").replace(/_/g, "/"));
+      var n = b.charCodeAt(89), name = decodeURIComponent(escape(b.substr(90, n)));
+      if (name && name.length <= 64) document.getElementById("title").textContent = "Add " + name + " on MoshGrid";
+    } catch (e) {}
+  } else {
+    document.getElementById("title").textContent = "This invite link is broken";
+    document.getElementById("lead").className = "bad";
+    document.getElementById("lead").textContent = "Part of the link is missing. Ask your friend to send it again, and copy all of it.";
+    document.getElementById("open").style.display = "none";
+  }
+</script>
+</body>
+</html>

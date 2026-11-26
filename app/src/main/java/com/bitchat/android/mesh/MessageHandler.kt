@@ -199,13 +199,16 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                 com.bitchat.android.model.NoisePayloadType.VERIFY_RESPONSE -> {
                     delegate?.onVerifyResponseReceived(peerID, noisePayload.data, packet.timestamp.toLong())
                 }
+                // MoshGrid: invites travel over Nostr only; one arriving over Bluetooth is dropped.
+                com.bitchat.android.model.NoisePayloadType.FRIEND_INVITE -> Unit
                 com.bitchat.android.model.NoisePayloadType.LOCATION,
                 com.bitchat.android.model.NoisePayloadType.MEETING_POINT,
                 com.bitchat.android.model.NoisePayloadType.HELP,
                 com.bitchat.android.model.NoisePayloadType.HELP_CANCEL,
                 com.bitchat.android.model.NoisePayloadType.GROUP_ROSTER,
                 com.bitchat.android.model.NoisePayloadType.GROUP_MESSAGE,
-                com.bitchat.android.model.NoisePayloadType.GROUP_RECEIPT -> {
+                com.bitchat.android.model.NoisePayloadType.GROUP_RECEIPT,
+                com.bitchat.android.model.NoisePayloadType.PROFILE_PHOTO -> {
                     // MoshGrid: friend-gated inside MoshInbox (group payloads: group-member gated); others are dropped silently.
                     com.bitchat.android.mosh.MoshInbox.receive(peerID, noisePayload)
                 }

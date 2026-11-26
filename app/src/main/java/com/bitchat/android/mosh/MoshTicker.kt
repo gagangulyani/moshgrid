@@ -31,6 +31,8 @@ class MoshTicker(private val context: Context, private val scope: CoroutineScope
                 runCatching { MoshRuntime.help.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
                 runCatching { MoshRuntime.meeting.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
                 runCatching { MoshGroups.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
+                runCatching { ProfilePhotos.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
+                runCatching { MoshUpdater.maybeCheck(context) }
                 val btOn = bluetoothOn()
                 if (btWasOn && !btOn) MoshMonitor.event(context, "bt_off")
                 btWasOn = btOn

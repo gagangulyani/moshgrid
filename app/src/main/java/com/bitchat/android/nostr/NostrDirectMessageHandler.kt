@@ -244,13 +244,19 @@ class NostrDirectMessageHandler(
             NoisePayloadType.VERIFY_RESPONSE,
             NoisePayloadType.VOICE_FRAME,
             NoisePayloadType.PEER_STATE -> Unit // Peer state is bound to a live mesh Noise generation.
+            NoisePayloadType.FRIEND_INVITE -> {
+                // MoshGrid: invite requests come from people who are not friends yet; MoshInvites checks the token.
+                (com.bitchat.android.mosh.MoshCodec.decode(payload) as? com.bitchat.android.mosh.FriendInvite)
+                    ?.let { com.bitchat.android.mosh.MoshInvites.onReceived(application, senderPubkey, it) }
+            }
             NoisePayloadType.LOCATION,
             NoisePayloadType.MEETING_POINT,
             NoisePayloadType.HELP,
             NoisePayloadType.HELP_CANCEL,
             NoisePayloadType.GROUP_ROSTER,
             NoisePayloadType.GROUP_MESSAGE,
-            NoisePayloadType.GROUP_RECEIPT -> {
+            NoisePayloadType.GROUP_RECEIPT,
+            NoisePayloadType.PROFILE_PHOTO -> {
                 // MoshGrid: map the Nostr sender back to their mesh peer ID, then friend-gate.
                 // Group members who are not friends are found by the Nostr key their group's creator gave us.
                 val noiseKey = com.bitchat.android.favorites.FavoritesPersistenceService.shared.findNoiseKey(senderPubkey)

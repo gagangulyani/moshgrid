@@ -58,9 +58,6 @@ import androidx.core.content.FileProvider
 import com.bitchat.android.mosh.MoshMonitor
 import com.bitchat.android.mosh.MoshRuntime
 import com.bitchat.android.ui.ChatViewModel
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /** Pages opened from home (⋮ menu, network button, You), shown full screen with a back arrow. */
 private enum class Page { FRIENDS, NETWORK, LOCATION, PROBLEMS, ABOUT }
@@ -73,7 +70,8 @@ private enum class Tone { HELP, WARN, INFO }
  * pill in the middle of the bottom bar (with the Ask for help bar above it), and You on the right.
  */
 @Composable
-fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null, openGroup: Pair<String, Long>? = null) {
+fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null, openGroup: Pair<String, Long>? = null,
+              openFriends: Long? = null) {
     val prefs = MoshRuntime.prefs
     val wipes by MoshRuntime.wipes.collectAsState()
     var onboarded by remember(wipes) { mutableStateOf(prefs.onboardingDone) }
@@ -88,6 +86,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
     var groupOpen by remember { mutableStateOf<String?>(null) }
     var groupInfo by remember { mutableStateOf(false) }
     var newGroup by remember { mutableStateOf(false) }
+    LaunchedEffect(openFriends) { if (openFriends != null) { groupOpen = null; friendOpen = null; page = Page.FRIENDS } }
     LaunchedEffect(openGroup) { if (openGroup != null) { groupOpen = openGroup.first; groupInfo = false; page = null } }
     var showHelp by remember { mutableStateOf(false) }
     // Friend to focus on Find, from a tapped Help notification. Cleared when Find is opened by hand.
@@ -99,7 +98,6 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
     }
     var findMeeting by remember { mutableStateOf(false) }
     val help by MoshRuntime.store.activeHelp.collectAsState()
-    val stop by MoshRuntime.lastStop.collectAsState()
     var hiddenHelp by remember { mutableStateOf(emptyMap<String, Long>()) }
     val context = LocalContext.current
     var clockNow by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -142,45 +140,28 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
                 goFind(help.maxByOrNull { it.value.raisedAtMs }?.key, false)
             }
         }
-        RadioBanners()
-        stop?.let { s ->
-            val at = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(s.stoppedAtMs))
-            // Why it stopped in plain words, and the one thing to do about it. Our bugs get a Report button.
-            val (why, action) = when (s.cause) {
-                com.bitchat.android.mosh.monitor.StopCause.PHONE_RESTARTED -> "Your phone was off or restarted." to "OK"
-                com.bitchat.android.mosh.monitor.StopCause.UPDATED -> "MoshGrid was updating." to "OK"
-                com.bitchat.android.mosh.monitor.StopCause.BATTERY -> "Your phone closed it to save battery or memory. Let MoshGrid run in the background so friends can reach you." to "Fix"
-                com.bitchat.android.mosh.monitor.StopCause.FORCE_STOPPED -> "It was force-stopped, in Settings or by a cleaner app. Leave it running at the gig." to "OK"
-                com.bitchat.android.mosh.monitor.StopCause.PERMISSION_CHANGED -> "A permission was changed in Settings, so Android restarted it." to "OK"
-                com.bitchat.android.mosh.monitor.StopCause.CRASHED -> "MoshGrid crashed. That's our bug: please report it." to "Report"
-                com.bitchat.android.mosh.monitor.StopCause.FROZE -> "MoshGrid froze and Android closed it. That's our bug: please report it." to "Report"
-                com.bitchat.android.mosh.monitor.StopCause.UNKNOWN -> "We couldn't tell why. If you didn't close it, please report it." to "Report"
-            }
-            Banner("MoshGrid was off for ${s.unreachableMinutes} min", "Stopped at $at. $why", Tone.WARN, action = action) {
-                MoshRuntime.reportStop(null)
-                when (action) {
-                    "Fix" -> runCatching {
-                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                            android.net.Uri.parse("package:" + context.packageName)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }.onFailure {
-                        runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                    }
-                    // Only the cause and version go in the link: nothing about the phone or the person.
-                    "Report" -> runCatching {
-                        val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty()
-                        val title = java.net.URLEncoder.encode("MoshGrid stopped: ${s.cause.name.lowercase().replace('_', ' ')} ($version)", "UTF-8")
-                        val body = java.net.URLEncoder.encode("What were you doing when it stopped?\n\nDid it happen more than once?\n", "UTF-8")
-                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
-                            android.net.Uri.parse("https://github.com/gagangulyani/moshgrid/issues/new?title=$title&body=$body"))
-                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }
-                }
-            }
+        val requests by com.bitchat.android.mosh.MoshInvites.requests.collectAsState()
+        if (requests.isNotEmpty() && page != Page.FRIENDS) {
+            val names = requests.joinToString { it.name }
+            Banner(if (requests.size == 1) "$names wants to add you" else "${requests.size} friend requests", names.takeIf { requests.size > 1 },
+                Tone.INFO, action = "View") { groupOpen = null; friendOpen = null; page = Page.FRIENDS }
         }
+        when (val u = com.bitchat.android.mosh.MoshUpdater.state.collectAsState().value) {
+            is com.bitchat.android.mosh.MoshUpdater.State.Available ->
+                Banner("MoshGrid ${u.update.versionName} is out", "Fixes and new things. Takes a minute.", Tone.INFO, action = "Update") {
+                    com.bitchat.android.mosh.MoshUpdater.start(context)
+                }
+            is com.bitchat.android.mosh.MoshUpdater.State.Downloading ->
+                Banner("Downloading MoshGrid ${u.update.versionName}", "${u.percent}%", Tone.INFO, action = "OK") {}
+            is com.bitchat.android.mosh.MoshUpdater.State.Failed ->
+                Banner("Update didn't finish", u.reason, Tone.WARN, action = "Try again") { com.bitchat.android.mosh.MoshUpdater.start(context) }
+            else -> Unit
+        }
+        RadioBanners()
     }
 
     Box(Modifier.fillMaxSize().statusBarsPadding()) {
+        OpenedInviteDialog()
         when {
             showHelp -> HelpScreen { showHelp = false }
             newGroup -> NewGroupScreen(chatViewModel.nickname.collectAsState().value, onBack = { newGroup = false }) { id ->
@@ -281,10 +262,10 @@ private fun YouScreen(
             Row(Modifier.fillMaxWidth().clip(MoshShapes.Tile).background(cs.surface)
                 .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onMyCode).padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                MoshAvatar(name.ifBlank { "?" }, "me", 56.dp)
+                MyPhotoAvatar(name, 56.dp)
                 Column(Modifier.weight(1f)) {
                     Text(name.ifBlank { "No name yet" }, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("Your name and code", fontSize = 14.sp, color = cs.onSurfaceVariant)
+                    Text(if (com.bitchat.android.mosh.ProfilePhotos.images.collectAsState().value.containsKey("me")) "Your name and code" else "Tap the circle to add a photo", fontSize = 14.sp, color = cs.onSurfaceVariant)
                 }
                 androidx.compose.material3.Icon(Icons.Outlined.QrCode2, contentDescription = null, tint = cs.primary,
                     modifier = Modifier.size(28.dp))
@@ -297,9 +278,11 @@ private fun YouScreen(
                 }, Icons.Outlined.Group, onFriends)
                 MoshActionRow("Location", if (prefs.shareLocation) "Friends can see where you are" else "Not sharing",
                     Icons.Outlined.LocationOn, onLocation)
+                val net = rememberNetState()
                 MoshActionRow("Network", listOf(
                     "Bluetooth " + if (prefs.bluetooth) "on" else "off",
-                    "Internet " + if (prefs.internet) "on" else "off",
+                    when (net) { NetState.OFF -> "Internet off"; NetState.OFFLINE -> "No internet"; NetState.CONNECTING -> "Connecting…"
+                        else -> "Relay connected" },
                 ).joinToString(" · "), Icons.Outlined.SignalCellularAlt, onNetwork)
                 MoshActionRow("Crash reports", if (prefs.monitoringOptIn) "On" else "Off", Icons.Outlined.BugReport, onProblems)
                 MoshActionRow("About", "Version ${appVersion(LocalContext.current)} · open source", Icons.Outlined.Info, onAbout)

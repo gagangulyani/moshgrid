@@ -353,7 +353,7 @@ private fun ChatRowItem(r: ChatRow, onClick: () -> Unit) {
                 val text = when {
                     r.isGroup && r.preview == null -> if (r.mutual) "Group made. Say hi." else "You're no longer in this group"
                     r.isGroup -> "${r.sender}: ${r.preview}"
-                    r.preview == null -> if (r.mutual) "Say hi" else "Waiting for them to scan you"
+                    r.preview == null -> if (r.mutual) "Say hi" else "Waiting for them to add you"
                     r.outgoing -> "You: ${r.preview}"
                     else -> r.preview
                 }
@@ -404,6 +404,58 @@ fun MoshPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit)
     }
 }
 
+/** What MoshGrid's internet route is doing right now, from the phone's network and the relay connections. */
+enum class NetState(val title: String, val detail: String, val good: Boolean) {
+    OFF("Internet off for MoshGrid", "Only Bluetooth is used. Turn Internet on below to reach friends who are far away.", false),
+    OFFLINE("No internet on this phone", "No Wi-Fi or mobile data right now. Bluetooth still works; messages wait and go when signal returns.", false),
+    CONNECTING("Connecting to the relay…", "The phone is online but MoshGrid hasn't reached a relay yet. Messages wait until it does.", false),
+    BACKUP("Connected through a backup relay", "MoshGrid's own relay isn't reachable, so a public relay carries your locked messages.", true),
+    CONNECTED("Connected to MoshGrid's relay", "Messages to friends far away go through now, locked so only they can read them.", true),
+}
+
+@Composable
+fun rememberNetState(): NetState {
+    val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val relay = remember { runCatching { com.bitchat.android.nostr.NostrRelayManager.getInstance(context) }.getOrNull() }
+    val relays by (relay?.relays ?: kotlinx.coroutines.flow.MutableStateFlow(emptyList())).collectAsState()
+    var online by remember { mutableStateOf(true) }
+    var internetOn by remember { mutableStateOf(MoshRuntime.prefs.internet) }
+    LaunchedEffect(Unit) {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        while (true) {
+            online = cm?.getNetworkCapabilities(cm.activeNetwork)
+                ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            internetOn = MoshRuntime.prefs.internet
+            kotlinx.coroutines.delay(2_000)
+        }
+    }
+    val up = relays.filter { it.isConnected }
+    return when {
+        !internetOn -> NetState.OFF
+        !online -> NetState.OFFLINE
+        up.any { it.url.contains(OWN_RELAY_HOST) } -> NetState.CONNECTED
+        up.isNotEmpty() -> NetState.BACKUP
+        else -> NetState.CONNECTING
+    }
+}
+
+private const val OWN_RELAY_HOST = "relay.gagangulyani.com"
+
+@Composable
+private fun InternetStatus(internet: Boolean) {
+    val s = rememberNetState()
+    val cs = MaterialTheme.colorScheme
+    Row(Modifier.fillMaxWidth().clip(MoshShapes.Card).background(cs.surface).padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.padding(top = 6.dp).size(12.dp).clip(androidx.compose.foundation.shape.CircleShape)
+            .background(if (s.good) MoshColors.Acid else if (s == NetState.CONNECTING) MoshColors.Amber else cs.outline))
+        Column {
+            Text(s.title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(s.detail, fontSize = 13.sp, color = cs.onSurfaceVariant)
+        }
+    }
+}
+
 /** Network: how messages are getting through right now, from what the app knows. */
 @Composable
 fun NetworkScreen(chatViewModel: ChatViewModel) {
@@ -433,6 +485,7 @@ fun NetworkScreen(chatViewModel: ChatViewModel) {
                 Text(when { !internet -> "Off"; relayUp -> "On"; else -> "No signal" }, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
             }
         }
+        InternetStatus(internet)
         Spacer(Modifier.height(4.dp))
         MoshSwitchRow("Bluetooth", "Phone to phone. No signal needed.", bluetooth) {
             bluetooth = it; prefs.bluetooth = it; com.bitchat.android.mosh.MoshNetworkGate.apply(context, prefs)

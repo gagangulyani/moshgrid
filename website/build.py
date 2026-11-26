@@ -9,6 +9,7 @@ DIST = SITE / "dist"
 SITE_URL = "https://moshgrid.vercel.app/"
 VERSION = re.search(r'versionName = "([^"]+)"', (ROOT / "app/build.gradle.kts").read_text()).group(1)
 VERSION = VERSION.replace("-moshgrid", "")
+VERSION_CODE = int(re.search(r"versionCode = (\d+)", (ROOT / "app/build.gradle.kts").read_text()).group(1))
 REL = ROOT / "app/build/outputs/apk/release"
 
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
@@ -49,7 +50,25 @@ for k, v in values.items():
     html = html.replace("{{" + k + "}}", v)
 assert "{{" not in html, re.findall(r"\{\{\w+\}\}", html)
 (DIST / "index.html").write_text(html)
-(DIST / "vercel.json").write_text(json.dumps({"headers": [
+
+# Invite links land here (https://moshgrid.vercel.app/add#code); the code stays in the fragment.
+add = (SITE / "add.template.html").read_text().replace("{{VERSION}}", VERSION)
+(DIST / "add.html").write_text(add)
+
+# Lets Android open invite links straight in the app (verified App Link), for the release key only.
+(DIST / ".well-known").mkdir()
+(DIST / ".well-known" / "assetlinks.json").write_text(json.dumps([{
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {"namespace": "android_app", "package_name": "com.moshgrid.android",
+               "sha256_cert_fingerprints": [values["CERT_SHA"]]}}], indent=1) + "\n")
+
+# The app's update check reads this: newest version and where to get it, with checksums.
+(DIST / "version.json").write_text(json.dumps({
+    "versionCode": VERSION_CODE, "versionName": VERSION,
+    "apk": {"arm64-v8a": {"url": SITE_URL + "downloads/" + arm.name, "sha256": values["SHA_ARM"]},
+            "universal": {"url": SITE_URL + "downloads/" + uni.name, "sha256": values["SHA_UNI"]}}}, indent=1) + "\n")
+(DIST / "vercel.json").write_text(json.dumps({"cleanUrls": True, "headers": [
+    {"source": "/version.json", "headers": [{"key": "Cache-Control", "value": "no-cache"}]},
     {"source": "/downloads/(.*)", "headers": [{"key": "Content-Disposition", "value": "attachment"}]},
     {"source": "/(fonts|img)/(.*)", "headers": [{"key": "Cache-Control", "value": "public, max-age=604800"}]},
     {"source": "/(.*)", "headers": [{"key": "X-Content-Type-Options", "value": "nosniff"},

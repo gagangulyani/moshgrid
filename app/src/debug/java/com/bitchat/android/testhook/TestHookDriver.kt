@@ -105,6 +105,20 @@ object TestHookDriver {
                     ok("mosh_group")
                 }
             }
+            // Debug only: a synthetic person (random keys, made-up name) uses my invite link, for UI checks.
+            "mosh_invite" -> {
+                com.bitchat.android.mosh.MoshRuntime.init(context)
+                val link = com.bitchat.android.mosh.MoshInvites.myLink(context)
+                if (link == null) err("mosh_invite", "keys not ready") else {
+                    val rnd = java.security.SecureRandom()
+                    fun hex() = ByteArray(32).also { rnd.nextBytes(it) }.joinToString("") { "%02x".format(it) }
+                    val nostr = hex()
+                    com.bitchat.android.mosh.MoshInvites.onReceived(context, nostr, com.bitchat.android.mosh.FriendInvite(
+                        com.bitchat.android.mosh.FriendInvite.REQUEST, link.token, hex(), nostr,
+                        intent.getStringExtra("name") ?: "Maya", System.currentTimeMillis()))
+                    ok("mosh_invite").put("link", link.url())
+                }
+            }
             "mosh_me" -> {
                 val lat0 = 28.4689; val lon0 = 77.0664
                 val n = intent.getStringExtra("n")?.toDoubleOrNull() ?: 0.0
@@ -390,6 +404,10 @@ object TestHookDriver {
                     com.bitchat.android.mosh.LocationUpdate(lat + dLat, lon + dLon, 6f, now - meta.first * 60_000L, 70))
             }
             made.put(JSONObject().put("name", name).put("peer", peer))
+            // Kai keeps initials, to show the fallback.
+            demoPhotoColors[name]?.let { (top, bottom) ->
+                com.bitchat.android.mosh.ProfilePhotos.onReceived(peer, com.bitchat.android.mosh.ProfilePhoto(now, demoPhoto(top, bottom)))
+            }
             if (help && name == "Priya") {
                 val dLat = off.first / 111_320.0
                 val dLon = off.second / (111_320.0 * Math.cos(Math.toRadians(lat)))
@@ -399,7 +417,29 @@ object TestHookDriver {
         }
         com.bitchat.android.mosh.MoshRuntime.updateMyLocation(com.bitchat.android.mosh.LocationUpdate(lat, lon, 5f, now, 80))
         demoGroup(now)
+        com.bitchat.android.mosh.ProfilePhotos.setMine(demoPhoto(0xFFB39DDB.toInt(), 0xFF4527A0.toInt()))
         return ok("mosh_demo").put("friends", made)
+    }
+
+    private val demoPhotoColors = mapOf(
+        "Priya" to (0xFFFFCC80.toInt() to 0xFFE65100.toInt()),
+        "Jo" to (0xFF80DEEA.toInt() to 0xFF00838F.toInt()),
+        "Sam" to (0xFFC5E1A5.toInt() to 0xFF558B2F.toInt()),
+    )
+
+    /** A drawn head-and-shoulders figure on a gradient: clearly not a photo of anyone. */
+    private fun demoPhoto(top: Int, bottom: Int): ByteArray {
+        val side = com.bitchat.android.mosh.ProfilePhotos.SIDE_PX
+        val bmp = android.graphics.Bitmap.createBitmap(side, side, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(bmp)
+        val bg = android.graphics.Paint().apply {
+            shader = android.graphics.LinearGradient(0f, 0f, side.toFloat(), side.toFloat(), top, bottom, android.graphics.Shader.TileMode.CLAMP)
+        }
+        c.drawRect(0f, 0f, side.toFloat(), side.toFloat(), bg)
+        val fg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xE6FFFFFF.toInt() }
+        c.drawCircle(side / 2f, side * 0.40f, side * 0.19f, fg)
+        c.drawOval(side * 0.18f, side * 0.66f, side * 0.82f, side * 1.20f, fg)
+        return com.bitchat.android.mosh.ProfilePhotos.compress(bmp)!!
     }
 
     /** A synthetic group made by me with Priya, Jo and Sam: chat from them, and one message of mine with mixed receipts. */

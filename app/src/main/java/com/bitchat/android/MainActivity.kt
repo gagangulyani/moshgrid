@@ -68,7 +68,19 @@ class MainActivity : OrientationAwareActivity() {
     /** MoshGrid: a group message notification was tapped. */
     private val openGroupRequest = androidx.compose.runtime.mutableStateOf<Pair<String, Long>?>(null)
 
+    /** MoshGrid: a friend request notification was tapped. */
+    private val openFriendsRequest = androidx.compose.runtime.mutableStateOf<Long?>(null)
+
     private fun takeOpenFindRequest(intent: Intent?) {
+        // MoshGrid: an invite link (moshgrid://add#… or https://moshgrid.vercel.app/add#…).
+        intent?.data?.let { uri ->
+            val isInvite = (uri.scheme == "moshgrid" && uri.host == "add") ||
+                (uri.scheme == "https" && uri.host == com.bitchat.android.mosh.InviteLink.HOST && uri.path?.trimEnd('/') == "/add")
+            if (isInvite) com.bitchat.android.mosh.MoshInvites.open(uri.toString())
+        }
+        if (intent?.getBooleanExtra(com.bitchat.android.mosh.MoshInvites.EXTRA_OPEN_REQUESTS, false) == true) {
+            openFriendsRequest.value = System.nanoTime()
+        }
         intent?.getStringExtra(com.bitchat.android.mosh.GroupNotifier.EXTRA_OPEN_GROUP)?.let { openGroupRequest.value = it to System.nanoTime() }
         val peer = intent?.getStringExtra(com.bitchat.android.mosh.HelpNotifier.EXTRA_OPEN_FIND) ?: return
         openFindRequest.value = peer to System.nanoTime()
@@ -365,6 +377,7 @@ class MainActivity : OrientationAwareActivity() {
                     chatViewModel = chatViewModel,
                     openFind = openFindRequest.value,
                     openGroup = openGroupRequest.value,
+                    openFriends = openFriendsRequest.value,
                 )
             }
             

@@ -238,7 +238,7 @@ fun FriendsScreen(onAddFriend: () -> Unit, onChat: (String) -> Unit, onFind: (St
                 Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 40.dp),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("No friends yet", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("Help reaches nobody until you add someone. Stand next to each other and scan each other's code.",
+                    Text("Help reaches nobody until you add someone. Scan each other's code, or send an invite link.",
                         fontSize = 16.sp, color = soft, textAlign = TextAlign.Center)
                 }
             }
@@ -249,6 +249,7 @@ fun FriendsScreen(onAddFriend: () -> Unit, onChat: (String) -> Unit, onFind: (St
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
             }
         }
+        item { InviteSection() }
         items(friends, key = { it.peerID }) { f ->
             val waiting = f.status == FriendStatus.WAITING_FOR_THEM
             Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Open") { onOpen(f.peerID) }.padding(horizontal = 20.dp, vertical = 10.dp),
@@ -257,7 +258,7 @@ fun FriendsScreen(onAddFriend: () -> Unit, onChat: (String) -> Unit, onFind: (St
                 Column(Modifier.weight(1f)) {
                     Text(f.displayName, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, maxLines = 1)
                     Text(when {
-                        waiting -> "Waiting for them to scan you"
+                        waiting -> "Waiting for them to add you"
                         f.peerID in paused -> "Not sharing your location"
                         else -> "Sees your location"
                     }, fontSize = 14.sp, color = if (waiting) MoshColors.Amber else soft, maxLines = 1)
@@ -290,7 +291,7 @@ private fun FriendProfile(
         Spacer(Modifier.height(8.dp))
         MoshAvatar(f.displayName, f.peerID, 88.dp)
         Text(f.displayName, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-        Text(if (mutual) "Friends" else "Waiting for them to scan you", fontSize = 15.sp,
+        Text(if (mutual) "Friends" else "Waiting for them to add you", fontSize = 15.sp,
             color = if (mutual) cs.onSurfaceVariant else MoshColors.Amber)
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(1f).height(52.dp).clip(MoshShapes.Pill).background(cs.surface).clickable(onClick = onChat),

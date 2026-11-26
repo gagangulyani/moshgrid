@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Internet permissions for Nostr relay connections -->
+    <!-- MoshGrid: installs its own updates from moshgrid.vercel.app (checked: same signing key). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
@@ -131,6 +133,19 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="moshgrid" android:host="verify" />
             </intent-filter>
+            <!-- MoshGrid invite links. The code is in the #fragment, which browsers never send to the server. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="moshgrid" android:host="add" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="moshgrid.vercel.app" android:path="/add" />
+            </intent-filter>
         </activity>
 
         <!-- Persistent foreground service to run the mesh in background -->
@@ -141,6 +156,7 @@
             tools:ignore="DataExtractionRules">
         </service>
 
+        <receiver android:name=".mosh.UpdateStatusReceiver" android:exported="false" />
         <receiver
             android:name=".service.ConversationNotificationReceiver"
             android:enabled="true"

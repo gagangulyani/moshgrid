@@ -34,7 +34,9 @@ enum class NoisePayloadType(val value: UByte) {
     HELP_CANCEL(0x43u),
     GROUP_ROSTER(0x44u),
     GROUP_MESSAGE(0x45u),
-    GROUP_RECEIPT(0x46u);
+    GROUP_RECEIPT(0x46u),
+    PROFILE_PHOTO(0x47u),
+    FRIEND_INVITE(0x48u);
 
 
     companion object {

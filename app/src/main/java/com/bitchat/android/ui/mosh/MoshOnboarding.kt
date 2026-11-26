@@ -259,6 +259,13 @@ private fun StepTitle(title: String, lead: String) {
 private fun NameStep(name: String, onName: (String) -> Unit, onDone: () -> Unit) {
     val focus = LocalFocusManager.current
     StepTitle("What do your friends call you?", "They'll see it when you ask for help.")
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        MyPhotoAvatar(name, 72.dp)
+        Column {
+            Text("Add a photo", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text("Optional. Only friends you add see it.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
     OutlinedTextField(
         value = name, onValueChange = onName, singleLine = true,
         label = { Text("Your name") }, placeholder = { Text("e.g. Priya") }, modifier = Modifier.fillMaxWidth(),
@@ -268,6 +275,7 @@ private fun NameStep(name: String, onName: (String) -> Unit, onDone: () -> Unit)
     Why("Why now?", listOf(
         "Your name travels inside your QR code, so set it before you and your friends scan each other.",
         "Friends see it next to your spot on the map, in chats and on your Help alerts.",
+        "Your photo goes only to friends, locked like your messages. You can change or remove it later on the You tab.",
     ))
 }
 

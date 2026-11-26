@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -338,8 +339,13 @@ private fun memberLine(g: Group, me: String?): String {
 private fun Bubble(m: StoredGroupMessage, from: Pair<String, Color>?, mine: Boolean, onTap: (() -> Unit)?) {
     val cs = MaterialTheme.colorScheme
     val bg = if (mine) androidx.compose.ui.graphics.lerp(cs.background, cs.primary, 0.16f) else cs.surface
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
-        Column(Modifier.widthIn(max = 300.dp).clip(RoundedCornerShape(18.dp)).background(bg)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom) {
+        if (from != null) {
+            MoshAvatar(from.first, m.fromKeyHex, 30.dp)
+            Spacer(Modifier.width(8.dp))
+        }
+        Column(Modifier.widthIn(max = 280.dp).clip(RoundedCornerShape(18.dp)).background(bg)
             .then(if (onTap != null) Modifier.clickable(onClickLabel = "Who has it", onClick = onTap) else Modifier)
             .padding(horizontal = 14.dp, vertical = 8.dp)) {
             if (from != null) Text(from.first, color = from.second, fontSize = 13.sp, fontWeight = FontWeight.Bold)

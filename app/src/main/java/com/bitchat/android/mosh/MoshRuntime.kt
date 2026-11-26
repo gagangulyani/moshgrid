@@ -59,6 +59,8 @@ object MoshRuntime {
         MoshNetworkGate.apply(app, prefs)
         MoshInbox.friends = friends
         MoshGroups.init(app, helpPrefs)
+        ProfilePhotos.init(helpPrefs)
+        MoshInvites.init(helpPrefs)
         MoshGroups.transport = { p, peer, member, allowNet ->
             val encoded = MoshCodec.encode(p)
             val mesh = prefs.bluetooth && MeshServiceHolder.getUnifiedOrCreate(app).sendMoshPayload(encoded, peer)
@@ -70,6 +72,7 @@ object MoshRuntime {
         }
         MoshInbox.sink = { from, p ->
             if (p is GroupRoster || p is GroupMessage || p is GroupReceipt) MoshGroups.onReceived(app, from, p)
+            else if (p is ProfilePhoto) ProfilePhotos.onReceived(from, p)
             else {
                 // The notifier acts on what the store decided: a replayed, late or cancelled alert never rings.
                 val change = store.apply(from, p)
@@ -143,6 +146,8 @@ object MoshRuntime {
         if (isInitialised) {
             help.wipe()
             MoshGroups.wipe()
+            ProfilePhotos.wipe()
+            MoshInvites.wipe()
             HelpNotifier.cancel(app, store.activeHelp.value.keys)
             store.wipe()
             prefs.clear()
@@ -173,6 +178,7 @@ object MoshRuntime {
         prefs.setPaused(friend.peerID, false)
         HelpNotifier.cancel(context.applicationContext, listOf(friend.peerID))
         store.forget(friend.peerID)
+        ProfilePhotos.forget(friend.noiseKeyHex)
     }
 
     /** Re-sends the latest meeting point over Bluetooth so friends who were away still get it. */

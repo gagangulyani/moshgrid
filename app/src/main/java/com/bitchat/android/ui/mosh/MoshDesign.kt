@@ -25,6 +25,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,9 +61,19 @@ object MoshShapes {
 /** A friend's colour, the same everywhere: avatar, compass blip and Find arrow. */
 fun avatarColor(key: String): Color = MoshColors.Avatars[Math.floorMod(key.hashCode(), MoshColors.Avatars.size)]
 
-/** Round avatar with initials, coloured per friend. */
+/** Round avatar: the friend's photo if they sent one, else initials coloured per friend. [key] is "me", a peer ID, a Noise key or a contact chat id. */
 @Composable
 fun MoshAvatar(name: String, key: String, size: Dp = 50.dp) {
+    val photos by com.bitchat.android.mosh.ProfilePhotos.images.collectAsState()
+    val photo = remember(key, photos) {
+        photos[key] ?: if (photos.isEmpty() || key == "me") null
+            else com.bitchat.android.mosh.MoshRuntime.friendFor(key)?.noiseKeyHex?.let { photos[it] }
+    }
+    if (photo != null) {
+        androidx.compose.foundation.Image(photo, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.size(size).clip(CircleShape).background(avatarColor(key)))
+        return
+    }
     val initials = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2)
         .joinToString("") { it.first().uppercase() }.ifEmpty { "?" }.take(2)
     Box(Modifier.size(size).clip(CircleShape).background(avatarColor(key)), contentAlignment = Alignment.Center) {
