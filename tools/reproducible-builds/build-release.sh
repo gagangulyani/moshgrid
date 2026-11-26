@@ -53,6 +53,8 @@ gradle_args=(
 )
 
 cd "$PROJECT_ROOT"
+# Fetch plugins first, retrying flaky downloads; it builds nothing, so the output is unchanged.
+tools/ci/resolve-gradle-plugins.sh
 ./gradlew "${gradle_args[@]}" :app:clean :app:bundleRelease
 
 aab_source="$PROJECT_ROOT/app/build/outputs/bundle/release/app-release.aab"
