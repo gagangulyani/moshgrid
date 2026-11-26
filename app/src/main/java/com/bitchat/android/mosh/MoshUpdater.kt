@@ -72,6 +72,17 @@ object MoshUpdater {
         data class Failed(val update: AvailableUpdate, val reason: String) : State
     }
 
+    /** What a tap on "Check for updates" found. */
+    sealed interface Check {
+        object None : Check
+        object Checking : Check
+        object UpToDate : Check
+        data class Error(val reason: String) : Check
+    }
+
+    private val _check = MutableStateFlow<Check>(Check.None)
+    val check: StateFlow<Check> = _check.asStateFlow()
+
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -90,7 +101,7 @@ object MoshUpdater {
 
     private suspend fun check(context: Context) = lock.withLock {
         if (_state.value is State.Downloading || _state.value is State.Installing) return@withLock
-        val json = get(MANIFEST_URL)?.toString(Charsets.UTF_8) ?: return@withLock
+        val json = runCatching { get(MANIFEST_URL) }.getOrNull()?.toString(Charsets.UTF_8) ?: return@withLock
         val update = UpdateManifest.parse(json, BuildConfig.VERSION_CODE, Build.SUPPORTED_ABIS.toList()) ?: run {
             _state.value = State.Idle; return@withLock
         }
@@ -98,6 +109,35 @@ object MoshUpdater {
         // Installing restarts the app: never on its own while someone needs Help.
         val helpLive = MoshRuntime.help.activeAlertId != null || MoshRuntime.store.activeHelp.value.isNotEmpty()
         if (onWifi(context) && !helpLive) install(context, update)
+    }
+
+    /**
+     * "Check for updates" tapped: check now, ignoring the 6-hour wait, and if there is an update
+     * download and install it at once, on any network (the tap is the go-ahead to use data).
+     */
+    fun checkNow(context: Context) {
+        val app = context.applicationContext
+        if (!MoshRuntime.isInitialised || !MoshRuntime.prefs.internet) {
+            _check.value = Check.Error("Internet is off for MoshGrid. Turn it on in Network to check.")
+            return
+        }
+        if (_check.value == Check.Checking) return
+        _check.value = Check.Checking
+        scope.launch {
+            lock.withLock {
+                if (_state.value is State.Downloading || _state.value is State.Installing) { _check.value = Check.None; return@withLock }
+                val json = runCatching { get(MANIFEST_URL) }.getOrNull()?.toString(Charsets.UTF_8)
+                if (json == null) {
+                    _check.value = Check.Error("Couldn't reach moshgrid.vercel.app. Check your connection and try again.")
+                    return@withLock
+                }
+                lastCheckMs = System.currentTimeMillis()
+                val update = UpdateManifest.parse(json, BuildConfig.VERSION_CODE, Build.SUPPORTED_ABIS.toList())
+                if (update == null) { _state.value = State.Idle; _check.value = Check.UpToDate; return@withLock }
+                _check.value = Check.None
+                install(app, update)
+            }
+        }
     }
 
     /** "Update" tapped. */

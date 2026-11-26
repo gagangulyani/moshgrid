@@ -39,8 +39,8 @@ android {
         applicationId = "com.moshgrid.android"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 6
-        versionName = "1.2.1-moshgrid"
+        versionCode = 7
+        versionName = "1.2.2-moshgrid"
         buildConfigField(
             "String",
             "GITHUB_RELEASE_CERT_SHA256",

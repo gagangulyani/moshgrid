@@ -29,7 +29,7 @@ At a big gig, thousands of phones choke the network and your group scatters. Mos
 - **Friends-only chat and groups.** Message the people you scanned, nobody else, one to one or in groups of up to 12. Ticks show who has your message and who read it; tap a message to see each person.
 - **Adding friends.** Scan each other's QR code in person, or send an invite link in any chat app (or pick one contact to text it to). Nobody is added until you accept their request, links expire after a week, and your contacts never leave the phone. Only friends can see your location or message you.
 - **Profile photos.** Add a photo and your friends see it on the compass, in chats and in groups. It goes only to friends, encrypted like your messages.
-- **Stays up to date.** MoshGrid checks moshgrid.vercel.app for new versions, verifies the download is signed with the MoshGrid key, and installs it; Android asks you to confirm when it needs to.
+- **Stays up to date.** MoshGrid checks moshgrid.vercel.app for new versions, verifies the download is signed with the MoshGrid key, and installs it; Android asks you to confirm when it needs to. To update straight away, tap Check for updates in You, About.
 - **Network status.** See whether MoshGrid is reaching its relay, a backup relay, or only Bluetooth right now.
 
 ## How it gets messages through
@@ -74,8 +74,8 @@ Release builds are signed with a key that is not in this repository. Crash repor
 The website lists the SHA-256 of each APK and of the signing certificate. Compare them with:
 
 ```sh
-shasum -a 256 MoshGrid-1.2.1.apk
-apksigner verify --print-certs MoshGrid-1.2.1.apk
+shasum -a 256 MoshGrid-1.2.2.apk
+apksigner verify --print-certs MoshGrid-1.2.2.apk
 ```
 
 ## Licence

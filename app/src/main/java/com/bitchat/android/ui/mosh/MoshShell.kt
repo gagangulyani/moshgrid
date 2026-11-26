@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -368,6 +369,7 @@ private fun AboutPage() {
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("MoshGrid", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
         Text("Version $version", fontSize = 15.sp, color = cs.onSurfaceVariant)
+        UpdateRow()
         listOf(
             "Phones pass messages to each other over Bluetooth, so it works with no signal.",
             "With signal, messages also go over the internet to friends out of range.",
@@ -379,6 +381,32 @@ private fun AboutPage() {
                 context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/gagangulyani/moshgrid"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
+        }
+    }
+}
+
+/** "Check for updates": checks now instead of waiting for the automatic check, and updates at once. */
+@Composable
+private fun UpdateRow() {
+    val context = LocalContext.current
+    val updater = com.bitchat.android.mosh.MoshUpdater
+    val state = updater.state.collectAsState().value
+    val check = updater.check.collectAsState().value
+    val line = when {
+        state is com.bitchat.android.mosh.MoshUpdater.State.Downloading -> "Downloading ${state.update.versionName}… ${state.percent}%"
+        state is com.bitchat.android.mosh.MoshUpdater.State.Installing -> "Installing ${state.update.versionName}…"
+        state is com.bitchat.android.mosh.MoshUpdater.State.Available -> "Version ${state.update.versionName} is ready. Tap to update."
+        state is com.bitchat.android.mosh.MoshUpdater.State.Failed -> state.reason + " Tap to try again."
+        check is com.bitchat.android.mosh.MoshUpdater.Check.Checking -> "Checking…"
+        check is com.bitchat.android.mosh.MoshUpdater.Check.UpToDate -> "You have the newest version."
+        check is com.bitchat.android.mosh.MoshUpdater.Check.Error -> check.reason
+        else -> "MoshGrid checks by itself every few hours. Tap to check now."
+    }
+    MoshActionRow("Check for updates", line, Icons.Outlined.Refresh) {
+        when (state) {
+            is com.bitchat.android.mosh.MoshUpdater.State.Available, is com.bitchat.android.mosh.MoshUpdater.State.Failed -> updater.start(context)
+            is com.bitchat.android.mosh.MoshUpdater.State.Downloading, is com.bitchat.android.mosh.MoshUpdater.State.Installing -> Unit
+            else -> updater.checkNow(context)
         }
     }
 }
