@@ -65,16 +65,19 @@ for k, v in {"OWNER_NAME": html_escape(owner["name"].strip()), "OWNER_BIO": bio,
     html = html.replace("{{" + k + "}}", v)
 assert "{{" not in html, re.findall(r"\{\{\w+\}\}", html)
 # Images are cached for a week, so tag each one with its content hash: a changed image gets a new URL.
-for img in (SITE / "img").iterdir():
-    html = html.replace(f"img/{img.name}\"", f"img/{img.name}?v={sha(img)[:8]}\"")
+def versioned(text):
+    for img in (SITE / "img").iterdir():
+        text = text.replace(f"img/{img.name}\"", f"img/{img.name}?v={sha(img)[:8]}\"")
+    return text
+html = versioned(html)
 (DIST / "index.html").write_text(html)
 
 # Invite links land here (https://moshgrid.vercel.app/add#code); the code stays in the fragment.
 add = (SITE / "add.template.html").read_text().replace("{{VERSION}}", VERSION)
-(DIST / "add.html").write_text(add)
+(DIST / "add.html").write_text(versioned(add))
 
 # Socials codes land here (https://moshgrid.vercel.app/s#…); the links stay in the fragment.
-(DIST / "s.html").write_text((SITE / "s.template.html").read_text().replace("{{VERSION}}", VERSION))
+(DIST / "s.html").write_text(versioned((SITE / "s.template.html").read_text().replace("{{VERSION}}", VERSION)))
 
 # Privacy policy and terms (https://moshgrid.vercel.app/privacy, /terms). Who runs MoshGrid comes from owner.json;
 # the build stops if any of it is missing, so a placeholder can never go live.
@@ -87,7 +90,7 @@ for page in ("privacy", "terms"):
     for k, v in legal.items():
         text = text.replace("{{" + k + "}}", v)
     assert "{{" not in text, re.findall(r"\{\{\w+\}\}", text)
-    (DIST / f"{page}.html").write_text(text)
+    (DIST / f"{page}.html").write_text(versioned(text))
 
 # Lets Android open invite links straight in the app (verified App Link), for the release key only.
 (DIST / ".well-known").mkdir()
