@@ -148,6 +148,7 @@ object MoshRuntime {
             MoshGroups.wipe()
             ProfilePhotos.wipe()
             MoshInvites.wipe()
+            OfflineMaps.wipe(app)
             HelpNotifier.cancel(app, store.activeHelp.value.keys)
             store.wipe()
             prefs.clear()
@@ -161,7 +162,7 @@ object MoshRuntime {
 
     /**
      * Remove a friend: they stop getting our location, Help and meeting points, and what we hold
-     * about them is forgotten. Adding them again needs a new in-person QR scan by both.
+     * about them is forgotten. Adding them again needs a new QR scan or invite link.
      */
     fun removeFriend(context: Context, friend: Friend) {
         if (!isInitialised) return

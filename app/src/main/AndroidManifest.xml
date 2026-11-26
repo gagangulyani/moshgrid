@@ -162,7 +162,7 @@
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Auto-start mesh service after boot if enabled -->
+        <!-- Auto-start mesh service after boot, and after an update replaced the app (it kills the service), if enabled -->
         <receiver
             android:name=".service.BootCompletedReceiver"
             android:enabled="true"
@@ -170,6 +170,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

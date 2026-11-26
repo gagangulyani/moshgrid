@@ -23,7 +23,7 @@ At a big gig, thousands of phones choke the network and your group scatters. Mos
 
 ## What it does
 
-- **Find.** A compass shows your friends around you by direction and distance, turning with your phone. Tap someone for a big arrow and how far away they are. A list and a map are one tap away. Festival venue maps ship inside the app, so they work with no data at all; elsewhere, with internet on, a street map comes from OpenFreeMap.
+- **Find.** A compass shows your friends around you by direction and distance, turning with your phone. Tap someone for a big arrow and how far away they are. A list and a map are one tap away. Festival venue maps ship inside the app, so they work with no data at all; elsewhere, with internet on, a street map comes from OpenFreeMap. Save the street map of any place beforehand (You, Offline maps) and it draws with no signal, even with MoshGrid's internet switched off. See [docs/MOSH_MAPS.md](docs/MOSH_MAPS.md).
 - **Help.** Hold the Help button for three seconds and your location, plus a note like "red cap, near the sound desk", goes to every friend. It keeps resending until it gets through and tells you who it reached. Friends get an alarm-style alert, which can sound through Do Not Disturb if they allow it.
 - **Meeting points.** Drop a pin and your group gets it. Every phone that has it keeps passing it on for a while, so friends who were out of range get it when they come back.
 - **Friends-only chat and groups.** Message the people you scanned, nobody else, one to one or in groups of up to 12. Ticks show who has your message and who read it; tap a message to see each person.
@@ -52,7 +52,7 @@ The app built on top of it is a different product:
 | Getting help | Not a feature | Hold-to-send Help that retries until friends get it and says who did |
 | Location | Coarse location channels shared with everyone in them | Your exact spot, shared only with your friends |
 
-What MoshGrid adds: Find with offline venue maps, friend location sharing, Help with retries and delivery status, meeting points, friends by QR scan or invite link, profile photos, groups, self-updates, a new four-tab interface, and battery guidance for keeping the app running all show (the `mosh` and `ui/mosh` packages).
+What MoshGrid adds: Find with offline venue and saved street maps, friend location sharing, Help with retries and delivery status, meeting points, friends by QR scan or invite link, profile photos, groups, self-updates, a new four-tab interface, and battery guidance for keeping the app running all show (the `mosh` and `ui/mosh` packages).
 
 What MoshGrid hides or removes from bitchat: public mesh chat, location channels and the globe, voice notes, photo and file messages, Cashu payments and Tor. Phones still relay other MoshGrid phones' encrypted packets, so everyone in the crowd helps carry messages.
 
@@ -74,8 +74,8 @@ Release builds are signed with a key that is not in this repository. Crash repor
 The website lists the SHA-256 of each APK and of the signing certificate. Compare them with:
 
 ```sh
-shasum -a 256 MoshGrid-1.2.0.apk
-apksigner verify --print-certs MoshGrid-1.2.0.apk
+shasum -a 256 MoshGrid-1.2.1.apk
+apksigner verify --print-certs MoshGrid-1.2.1.apk
 ```
 
 ## Licence

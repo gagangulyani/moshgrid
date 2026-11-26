@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,7 +61,7 @@ import com.bitchat.android.mosh.MoshRuntime
 import com.bitchat.android.ui.ChatViewModel
 
 /** Pages opened from home (⋮ menu, network button, You), shown full screen with a back arrow. */
-private enum class Page { FRIENDS, NETWORK, LOCATION, PROBLEMS, ABOUT }
+private enum class Page { FRIENDS, NETWORK, LOCATION, MAPS, PROBLEMS, ABOUT }
 
 /** How loud an in-app banner is: Help is solid red, problems are amber, the rest are plain tiles. */
 private enum class Tone { HELP, WARN, INFO }
@@ -180,6 +181,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
             }
             page == Page.NETWORK -> MoshPage("Network", { page = null }) { NetworkScreen(chatViewModel) }
             page == Page.LOCATION -> MoshPage("Location", { page = null }) { LocationPage() }
+            page == Page.MAPS -> MoshPage("Offline maps", { page = null }) { OfflineMapsScreen() }
             page == Page.PROBLEMS -> MoshPage("Crash reports", { page = null }) { ProblemsPage() }
             page == Page.ABOUT -> MoshPage("About", { page = null }) { AboutPage() }
             else -> Column(Modifier.fillMaxSize()) {
@@ -203,9 +205,11 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
                                     FindScreen(focusPeerID = findFocus, focusMeeting = findMeeting,
                                         onAddFriend = { chatViewModel.showVerificationSheet() },
                                         onMessage = { peer -> chatViewModel.showPrivateChatSheet(peer) },
+                                        onOfflineMaps = { page = Page.MAPS },
                                         onMenu = listOf(
                                             "Add a friend" to { chatViewModel.showVerificationSheet() },
                                             "Friends" to { page = Page.FRIENDS },
+                                            "Offline maps" to { page = Page.MAPS },
                                             "Network" to { page = Page.NETWORK },
                                             "Settings" to { tab = HomeTab.YOU },
                                         ))
@@ -217,6 +221,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
                             onMyCode = { chatViewModel.showVerificationSheet() },
                             onFriends = { page = Page.FRIENDS },
                             onLocation = { page = Page.LOCATION },
+                            onMaps = { page = Page.MAPS },
                             onNetwork = { page = Page.NETWORK },
                             onProblems = { page = Page.PROBLEMS },
                             onAbout = { page = Page.ABOUT },
@@ -247,7 +252,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
  */
 @Composable
 private fun YouScreen(
-    name: String, onMyCode: () -> Unit, onFriends: () -> Unit, onLocation: () -> Unit,
+    name: String, onMyCode: () -> Unit, onFriends: () -> Unit, onLocation: () -> Unit, onMaps: () -> Unit,
     onNetwork: () -> Unit, onProblems: () -> Unit, onAbout: () -> Unit,
 ) {
     val prefs = MoshRuntime.prefs
@@ -278,6 +283,11 @@ private fun YouScreen(
                 }, Icons.Outlined.Group, onFriends)
                 MoshActionRow("Location", if (prefs.shareLocation) "Friends can see where you are" else "Not sharing",
                     Icons.Outlined.LocationOn, onLocation)
+                val mapsContext = LocalContext.current
+                LaunchedEffect(Unit) { com.bitchat.android.mosh.OfflineMaps.ensure(mapsContext) }
+                val saved = com.bitchat.android.mosh.OfflineMaps.maps.collectAsState().value.size
+                MoshActionRow("Offline maps", if (saved == 0) "Save a street map for when there's no signal"
+                    else "$saved saved on this phone", Icons.Outlined.Map, onMaps)
                 val net = rememberNetState()
                 MoshActionRow("Network", listOf(
                     "Bluetooth " + if (prefs.bluetooth) "on" else "off",

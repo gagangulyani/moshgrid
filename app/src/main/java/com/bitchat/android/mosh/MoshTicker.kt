@@ -22,16 +22,20 @@ class MoshTicker(private val context: Context, private val scope: CoroutineScope
         // LocationSharer checks the setting before sending anything.
         sharer.start()
         val heartbeat = MoshStartup.heartbeat(context)
-        job = scope.launch {
+        // Off the main thread: the loop writes files, reads the Keystore and builds packets every minute.
+        job = scope.launch(kotlinx.coroutines.Dispatchers.Default) {
             var minutes = 0
             var btWasOn = true
             while (isActive) {
                 heartbeat.beat()
+                // Location permission may have been granted after the service started.
+                runCatching { sharer.start() }
                 // A failure in one tick must not end the loop: Help repeats depend on it.
                 runCatching { MoshRuntime.help.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
                 runCatching { MoshRuntime.meeting.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
                 runCatching { MoshGroups.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
                 runCatching { ProfilePhotos.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
+                runCatching { MoshInvites.tick(context) }.onFailure { MoshMonitor.event(context, "tick_failed") }
                 runCatching { MoshUpdater.maybeCheck(context) }
                 val btOn = bluetoothOn()
                 if (btWasOn && !btOn) MoshMonitor.event(context, "bt_off")

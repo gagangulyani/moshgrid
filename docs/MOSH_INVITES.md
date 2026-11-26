@@ -45,6 +45,12 @@ yet, and the mesh friend gate would refuse them anyway). Golden vectors:
   still works after A replaced the link.
 - **Both sides** then record the other exactly as a QR scan does: favourite, verified
   fingerprint, Nostr key, "they added us". B shows as "waiting" from sending until the accept.
+- **Repeats.** The relay send queue lives in memory, and the other phone may be offline. So B
+  repeats an unanswered request every 30 minutes (`InviteBook.RESEND_MS`) until it is accepted or
+  the link expires. A keeps one request per person, so repeats never notify twice. If A gets a
+  request from someone who is already a mutual friend, A answers it again. This is only done when
+  the request was signed by that friend's stored Nostr key. It covers a lost accept, which would
+  otherwise leave B showing "waiting" forever.
 - Requests, sent requests and the token sit in the encrypted MoshGrid preferences; panic wipe
   clears them.
 

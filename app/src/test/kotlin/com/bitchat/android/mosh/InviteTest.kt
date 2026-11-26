@@ -122,4 +122,23 @@ class InviteTest {
         assertNull(b.send(InviteLink(priya, priyaNostr, token, (now - 1) / 1000, "Priya"), me))
         assertNull(b.send(InviteLink(me, meNostr, token, (now + 60_000) / 1000, "Ana"), me))
     }
+
+    @Test fun unanswered_requests_repeat_until_accepted_or_expired() {
+        val b = book()
+        val link = InviteLink(priya, priyaNostr, token, (now + 2 * 60 * 60_000) / 1000, "Priya")
+        assertNotNull(b.send(link, me))
+        assertTrue(b.dueResends().isEmpty())                                             // just sent
+        now += InviteBook.RESEND_MS
+        assertEquals(1, b.dueResends().size)
+        assertTrue(b.dueResends().isEmpty())                                             // not twice in a row
+        now += InviteBook.RESEND_MS
+        assertEquals(1, b.dueResends().size)
+        assertNotNull(b.onAccept(priyaNostr, FriendInvite(FriendInvite.ACCEPT, token, priya, priyaNostr, "Priya", now)))
+        now += InviteBook.RESEND_MS
+        assertTrue(b.dueResends().isEmpty())                                             // answered
+        val late = InviteLink(key('c'), key('3'), token, (now + 60 * 60_000) / 1000, "Jo")
+        assertNotNull(b.send(late, me))
+        now += 2 * InviteBook.RESEND_MS + 1
+        assertTrue(b.dueResends().isEmpty())                                             // their link ran out
+    }
 }

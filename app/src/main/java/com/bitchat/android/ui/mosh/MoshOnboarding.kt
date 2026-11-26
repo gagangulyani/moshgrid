@@ -298,10 +298,10 @@ private fun NetworkStep(bluetooth: Boolean, onBluetooth: (Boolean) -> Unit, inte
 
 @Composable
 private fun LocationStep(share: Boolean, onShare: (Boolean) -> Unit) {
-    StepTitle("Show friends where you are?", "Only people you scan in person.")
+    StepTitle("Show friends where you are?", "Only friends you add, never anyone else.")
     SwitchCard(Icons.Outlined.LocationOn, "Share my location", null, share, onShare)
     Why("Who can see it?", listOf(
-        "Only friends you added by scanning each other's QR codes. Nobody else, and not MoshGrid.",
+        "Only friends you added, by QR code or invite link. Nobody else, and not MoshGrid.",
         "You can stop sharing with one friend in Friends, or with everyone in Settings.",
         "When you press Help, your location goes to your friends even if sharing is off.",
     ))

@@ -75,7 +75,7 @@ class NostrRelayManager private constructor() {
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
     
     // Internal state
-    private val relaysList = mutableListOf<Relay>()
+    private val relaysList = java.util.concurrent.CopyOnWriteArrayList<Relay>()
     private val connections = ConcurrentHashMap<String, WebSocket>()
     private val reconnectJobs = ConcurrentHashMap<String, Job>()
     private val desiredConnected = AtomicBoolean(false)
@@ -413,7 +413,7 @@ class NostrRelayManager private constructor() {
             val defaultRelayUrls = NostrTestRelays.override?.takeIf { com.bitchat.android.BuildConfig.DEBUG } ?: DefaultNostrRelays.urls
             relaysList.addAll(defaultRelayUrls.map { Relay(it) })
             nonLiveRelayUrls.addAll(defaultRelayUrls)
-            _relays.value = relaysList.toList()
+            updateRelaysList()
             updateConnectionStatus()
             LiveLocationPrivacyGate.addRevocationListener(::revokeLiveLocationAccess)
         } catch (e: Exception) {
@@ -664,6 +664,15 @@ class NostrRelayManager private constructor() {
     }
     
     /**
+     * The phone just got a network back: retry every relay that is down now instead of waiting out a
+     * backoff that may have grown to minutes during the outage. Connected relays are left alone.
+     */
+    fun onNetworkAvailable() {
+        if (!desiredConnected.get() || !com.bitchat.android.mosh.MoshNetworkGate.allowsNostr()) return
+        relaysList.filter { !it.isConnected }.forEach { retryConnection(it.url) }
+    }
+
+    /**
      * Reset all relay connections
      * This will automatically restore all subscriptions when reconnected
      */
@@ -738,9 +747,7 @@ class NostrRelayManager private constructor() {
     /**
      * Get detailed status for all relays
      */
-    fun getRelayStatuses(): List<Relay> {
-        return relaysList.toList()
-    }
+    fun getRelayStatuses(): List<Relay> = snapshot()
     
     /**
      * Get event deduplication statistics
@@ -1109,8 +1116,12 @@ class NostrRelayManager private constructor() {
     }
     
     private fun updateRelaysList() {
-        _relays.value = relaysList.toList()
+        _relays.value = snapshot()
     }
+
+    // Relay objects are mutated in place, so publish copies: a list holding the same objects would equal
+    // the previous value and StateFlow would drop it (status stuck on "Connecting" after a reconnect).
+    private fun snapshot(): List<Relay> = relaysList.map { it.copy() }
     
     private fun updateConnectionStatus() {
         val connected = relaysList.any { it.isConnected }

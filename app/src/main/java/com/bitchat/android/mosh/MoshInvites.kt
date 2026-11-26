@@ -83,6 +83,11 @@ object MoshInvites {
         val sender = senderNostrHex.lowercase()
         when (p.kind) {
             FriendInvite.REQUEST -> {
+                // Already friends with the same keys: my accept was probably lost, so send it again.
+                if (p.nostrPubHex == sender && isMutualWithNostr(context, p.noiseKeyHex, sender)) {
+                    sendAccept(context, p.token, p.noiseKeyHex, sender)
+                    return
+                }
                 val me = VerificationService.myNoiseKeyHex()
                 val isNew = b.onRequest(sender, p, me) { k ->
                     MoshRuntime.isInitialised && MoshRuntime.mutualFriends().any { it.noiseKeyHex == k }
@@ -100,14 +105,42 @@ object MoshInvites {
     /** Yes to a request: they become a full friend, and they hear back. Off the main thread. */
     fun accept(context: Context, r: InviteRequest): Boolean {
         val b = book ?: return false
-        val me = VerificationService.myNoiseKeyHex() ?: return false
-        val myNostr = NostrIdentityBridge.getCurrentNostrIdentity(context)?.publicKeyHex?.lowercase() ?: return false
+        VerificationService.myNoiseKeyHex() ?: return false
+        NostrIdentityBridge.getCurrentNostrIdentity(context) ?: return false
         befriend(context, r.noiseKeyHex, r.nostrPubHex, r.name, theyAddedUs = true)
-        val p = FriendInvite(FriendInvite.ACCEPT, r.token, me, myNostr, myName(context), System.currentTimeMillis())
-        NostrTransport.getInstance(context).sendMoshPayload(MoshCodec.encode(p), r.noiseKeyHex, r.nostrPubHex)
+        sendAccept(context, r.token, r.noiseKeyHex, r.nostrPubHex)
         b.removeRequest(r.noiseKeyHex)
         cancelNotification(context)
         return true
+    }
+
+    /** From the ticker: repeat unanswered requests until they are accepted or the link runs out. */
+    fun tick(context: Context) {
+        val b = book ?: return
+        if (!MoshRuntime.isInitialised || !nostrAllowed(MoshRuntime.prefs)) return
+        val due = b.dueResends()
+        if (due.isEmpty()) return
+        val me = VerificationService.myNoiseKeyHex() ?: return
+        val myNostr = NostrIdentityBridge.getCurrentNostrIdentity(context)?.publicKeyHex?.lowercase() ?: return
+        due.forEach { s ->
+            val p = FriendInvite(FriendInvite.REQUEST, s.link.token, me, myNostr, myName(context), s.sentAtMs)
+            NostrTransport.getInstance(context).sendMoshPayload(MoshCodec.encode(p), s.link.noiseKeyHex, s.link.nostrPubHex)
+        }
+    }
+
+    private fun isMutualWithNostr(context: Context, noiseKeyHex: String, nostrHex: String): Boolean {
+        val key = ContactIdentityResolver.bytesFromHex(noiseKeyHex) ?: return false
+        if (!MoshRuntime.isInitialised || MoshRuntime.mutualFriends().none { it.noiseKeyHex == noiseKeyHex }) return false
+        FavoritesPersistenceService.initialize(context.applicationContext)
+        val stored = FavoritesPersistenceService.shared.getFavoriteStatus(key)?.peerNostrPublicKey ?: return false
+        return ContactIdentityResolver.nostrPubkeyHex(stored)?.lowercase() == nostrHex
+    }
+
+    private fun sendAccept(context: Context, token: ByteArray, toNoise: String, toNostr: String) {
+        val me = VerificationService.myNoiseKeyHex() ?: return
+        val myNostr = NostrIdentityBridge.getCurrentNostrIdentity(context)?.publicKeyHex?.lowercase() ?: return
+        val p = FriendInvite(FriendInvite.ACCEPT, token, me, myNostr, myName(context), System.currentTimeMillis())
+        NostrTransport.getInstance(context).sendMoshPayload(MoshCodec.encode(p), toNoise, toNostr)
     }
 
     fun decline(context: Context, r: InviteRequest) {

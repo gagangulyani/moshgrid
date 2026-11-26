@@ -311,7 +311,7 @@ private fun FriendProfile(
     if (removing) androidx.compose.material3.AlertDialog(
         onDismissRequest = { removing = false },
         title = { Text("Remove ${f.displayName}?") },
-        text = { Text("They stop getting your location, Help and meeting points. To add them again, scan each other in person.") },
+        text = { Text("They stop getting your location, Help and meeting points. To add them again, scan each other or send them your invite link.") },
         confirmButton = {
             TextButton(onClick = { MoshRuntime.removeFriend(context, f); removing = false; onRemoved() }) {
                 Text("Remove", color = cs.error)

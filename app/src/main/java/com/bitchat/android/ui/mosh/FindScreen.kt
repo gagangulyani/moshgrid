@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import com.bitchat.android.mosh.dotField
+import com.bitchat.android.mosh.contains
 import com.bitchat.android.mosh.radarFraction
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -91,7 +92,6 @@ import com.bitchat.android.mosh.directionWords
 import com.bitchat.android.mosh.distanceM
 import com.bitchat.android.mosh.guidance
 import kotlinx.coroutines.delay
-import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
@@ -116,9 +116,9 @@ private const val PINK = "#FF5CDB"
 private const val RED = "#E8222B"
 private const val GREY = "#6E6E6E"
 
+/** OpenFreeMap street tiles: outside the built-in venue maps, with Internet on or from a saved offline map. */
+private const val STREET_STYLE = com.bitchat.android.mosh.OfflineMaps.STREET_STYLE
 /** Background-only style: venue features come from the bundled GeoJSON, so no tiles or glyphs are needed. */
-/** OpenFreeMap: free street tiles, no account or tracking. Only used outside the built-in venue maps, with Internet on. */
-private const val STREET_STYLE = "https://tiles.openfreemap.org/styles/dark"
 private const val BASE_STYLE = """{"version":8,"sources":{},"layers":[{"id":"bg","type":"background","paint":{"background-color":"#050505"}}]}"""
 
 /** The three ways to look for friends, as tabs under the Find title. */
@@ -131,6 +131,7 @@ fun FindScreen(
     onAddFriend: () -> Unit = {},
     onMessage: (String) -> Unit = {},
     onMenu: List<Pair<String, () -> Unit>> = emptyList(),
+    onOfflineMaps: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val venues = remember { loadVenues(context) }
@@ -198,7 +199,11 @@ fun FindScreen(
                     ?: venues.firstOrNull().takeIf { pins.isEmpty() }
                 var fitRequest by remember { mutableIntStateOf(0) }
                 var streetFailed by remember { mutableStateOf(false) }
-                val streetMap = venue == null && MoshRuntime.prefs.internet && !streetFailed
+                val saved by com.bitchat.android.mosh.OfflineMaps.maps.collectAsState()
+                val internet = MoshRuntime.prefs.internet
+                // A saved map draws with no signal; with Internet off it is the only street map there is.
+                val savedHere = saved.any { m -> pins.any { (it.lat to it.lon) in m.box } }
+                val streetMap = venue == null && !streetFailed && (internet || savedHere)
                 Box(Modifier.fillMaxWidth().weight(1f)) {
                     VenueMap(venue = venue, pins = pins, fitRequest = fitRequest, streetMap = streetMap,
                         onStreetMapFailed = { if (venue == null) streetFailed = true }, onLongPress = { longPress = it })
@@ -214,13 +219,14 @@ fun FindScreen(
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)).padding(20.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("No map for this place", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                            Text((if (streetFailed) "The street map couldn't load. Check your connection. "
-                                else "Street maps need Internet on (Network). ") +
+                            Text((if (streetFailed) "The street map couldn't load and this area isn't saved on your phone. "
+                                else "Street maps need Internet on (Network), or a map you saved. ") +
                                 "Festival grounds work offline: " + venues.joinToString { it.name } + ".",
                                 fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("Here, the dots still show where friends are around you. The compass is easier to read.",
                                 fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             FindPill("Use the compass") { view = FindView.COMPASS }
+                            FindPill("Save maps for offline") { onOfflineMaps() }
                         }
                     }
                     Text(
@@ -231,8 +237,11 @@ fun FindScreen(
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
                 }
-                Text(if (streetMap) "Street map from OpenFreeMap: it sees your internet address and the area you look at. Press and hold to set a meeting point."
-                    else "Press and hold the map to set a meeting point.", fontSize = 13.sp,
+                Text(when {
+                        streetMap && !internet -> "Map saved on your phone. Press and hold to set a meeting point."
+                        streetMap -> "Street map from OpenFreeMap: it sees your internet address and the area you look at. Press and hold to set a meeting point."
+                        else -> "Press and hold the map to set a meeting point."
+                    }, fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp))
             }
@@ -517,7 +526,7 @@ private data class Pin(val lat: Double, val lon: Double, val color: String, val 
 
 /** Rounded overlay on the map; tappable when [onClick] is given. */
 @Composable
-private fun MapChip(text: String, modifier: Modifier, bold: Boolean = false, onClick: (() -> Unit)? = null) {
+internal fun MapChip(text: String, modifier: Modifier, bold: Boolean = false, onClick: (() -> Unit)? = null) {
     val base = modifier.clip(MoshShapes.Pill).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
     val m = if (onClick != null) base.clickable(onClick = onClick).heightIn(min = 48.dp) else base.heightIn(min = 36.dp)
     Box(m.padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
@@ -568,7 +577,7 @@ private fun VenueMap(venue: Venue?, pins: List<Pin>, fitRequest: Int, streetMap:
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember {
-        MapLibre.getInstance(context)
+        com.bitchat.android.mosh.OfflineMaps.ensure(context)
         MapView(context).apply { onCreate(Bundle()) }
     }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -693,7 +702,7 @@ private fun metres(d: Double): String = if (d < 1000) "${d.toInt()} m" else "%.1
 
 /** Small acid pill, the design's "Find" button. */
 @Composable
-private fun FindPill(label: String, onClick: () -> Unit) {
+internal fun FindPill(label: String, onClick: () -> Unit) {
     Box(Modifier.heightIn(min = 48.dp).clip(MoshShapes.Pill).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
         .clickable(onClick = onClick).padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
         Text(label, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 15.sp)

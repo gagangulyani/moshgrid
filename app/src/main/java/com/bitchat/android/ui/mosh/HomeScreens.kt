@@ -414,7 +414,7 @@ enum class NetState(val title: String, val detail: String, val good: Boolean) {
 }
 
 @Composable
-fun rememberNetState(): NetState {
+fun rememberNetState(internetSwitch: Boolean? = null): NetState {
     val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val relay = remember { runCatching { com.bitchat.android.nostr.NostrRelayManager.getInstance(context) }.getOrNull() }
     val relays by (relay?.relays ?: kotlinx.coroutines.flow.MutableStateFlow(emptyList())).collectAsState()
@@ -431,7 +431,7 @@ fun rememberNetState(): NetState {
     }
     val up = relays.filter { it.isConnected }
     return when {
-        !internetOn -> NetState.OFF
+        !(internetSwitch ?: internetOn) -> NetState.OFF
         !online -> NetState.OFFLINE
         up.any { it.url.contains(OWN_RELAY_HOST) } -> NetState.CONNECTED
         up.isNotEmpty() -> NetState.BACKUP
@@ -443,7 +443,7 @@ private const val OWN_RELAY_HOST = "relay.gagangulyani.com"
 
 @Composable
 private fun InternetStatus(internet: Boolean) {
-    val s = rememberNetState()
+    val s = rememberNetState(internet)
     val cs = MaterialTheme.colorScheme
     Row(Modifier.fillMaxWidth().clip(MoshShapes.Card).background(cs.surface).padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)) {

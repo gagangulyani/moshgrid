@@ -18,7 +18,22 @@ object MoshNetworkGate {
     fun apply(context: Context, prefs: MoshPrefs) {
         internetAllowed = prefs.internet
         runCatching { DebugSettingsManager.getInstance().setBleEnabled(prefs.bluetooth) }
+        runCatching { OfflineMaps.applyInternet() }
         val relays = runCatching { NostrRelayManager.getInstance(context.applicationContext) }.getOrNull() ?: return
         if (prefs.internet) relays.connect() else relays.disconnect()
+        watchNetwork(context.applicationContext, relays)
+    }
+
+    @Volatile private var watching = false
+
+    /** When signal comes back (after a dead zone, or Wi-Fi to mobile data), reconnect at once, not after the backoff. */
+    private fun watchNetwork(context: Context, relays: NostrRelayManager) {
+        if (watching) return
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return
+        watching = runCatching {
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) = relays.onNetworkAvailable()
+            })
+        }.isSuccess
     }
 }

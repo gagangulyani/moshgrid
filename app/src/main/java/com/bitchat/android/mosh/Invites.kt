@@ -148,6 +148,22 @@ class InviteBook(
         return s
     }
 
+    private val lastResent = HashMap<String, Long>()
+
+    /**
+     * Requests I sent that are still unanswered and due again. The relay queue lives in memory and the
+     * other phone may have been offline, so a request is repeated every [RESEND_MS] until it is
+     * accepted or the link runs out. Receivers keep one request per person, so repeats are harmless.
+     */
+    @Synchronized
+    fun dueResends(): List<SentInvite> {
+        val now = clock()
+        return _sent.value.filter { s ->
+            now - s.sentAtMs < LINK_VALID_MS && s.link.expiresAtSec * 1000 > now &&
+                now - (lastResent[s.link.noiseKeyHex] ?: s.sentAtMs) >= RESEND_MS
+        }.onEach { lastResent[it.link.noiseKeyHex] = now }
+    }
+
     /** The request this accept answers, or null if it answers nothing I sent. The match is removed. */
     @Synchronized
     fun onAccept(senderNostrHex: String, p: FriendInvite): SentInvite? {
@@ -164,6 +180,7 @@ class InviteBook(
     @Synchronized
     fun wipe() {
         token = null
+        lastResent.clear()
         set(emptyList())
         _sent.value = emptyList(); persistence?.saveSent(emptyList())
         persistence?.saveToken(ByteArray(0), 0)
@@ -176,5 +193,6 @@ class InviteBook(
         /** A link handed out should work for at least a day, so an old token is replaced early. */
         const val MIN_LEFT_MS = 24 * 60 * 60_000L
         const val MAX_REQUESTS = 20
+        const val RESEND_MS = 30 * 60_000L
     }
 }

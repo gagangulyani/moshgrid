@@ -95,7 +95,9 @@ object MoshUpdater {
             _state.value = State.Idle; return@withLock
         }
         _state.value = State.Available(update)
-        if (onWifi(context)) install(context, update)
+        // Installing restarts the app: never on its own while someone needs Help.
+        val helpLive = MoshRuntime.help.activeAlertId != null || MoshRuntime.store.activeHelp.value.isNotEmpty()
+        if (onWifi(context) && !helpLive) install(context, update)
     }
 
     /** "Update" tapped. */

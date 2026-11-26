@@ -18,9 +18,12 @@ import android.util.Log
  */
 class LocationSharer(private val context: Context) : LocationListener {
     private var lastSent: LocationUpdate? = null
-    private var running = false
+    @Volatile private var running = false
+    private var deniedLogged = false
 
+    /** Safe to call again and again: the ticker retries every minute until permission is granted. */
     @SuppressLint("MissingPermission")
+    @Synchronized
     fun start() {
         if (running) return
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
@@ -31,6 +34,7 @@ class LocationSharer(private val context: Context) : LocationListener {
                 }
             }
             running = true
+            deniedLogged = false
             // A fresh fix can take minutes in a crowd. Start from the newest position Android already has
             // (its real age is kept, so Help widens its circle) instead of "location unknown".
             val now = System.currentTimeMillis()
@@ -42,11 +46,15 @@ class LocationSharer(private val context: Context) : LocationListener {
                 now,
             )?.let { onLocationChanged(it) }
         } catch (e: SecurityException) {
-            Log.w(TAG, "Location permission missing; sharing paused")
-            MoshMonitor.event(context, "permission_revoked")
+            if (!deniedLogged) {
+                Log.w(TAG, "Location permission missing; sharing paused")
+                MoshMonitor.event(context, "permission_revoked")
+                deniedLogged = true
+            }
         }
     }
 
+    @Synchronized
     fun stop() {
         if (!running) return
         (context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager)?.removeUpdates(this)
