@@ -49,6 +49,9 @@ values = {"P1": p1, "P2": p2, "VERSION": VERSION, "APK_ARM": arm.name, "APK_UNI"
 for k, v in values.items():
     html = html.replace("{{" + k + "}}", v)
 assert "{{" not in html, re.findall(r"\{\{\w+\}\}", html)
+# Images are cached for a week, so tag each one with its content hash: a changed image gets a new URL.
+for img in (SITE / "img").iterdir():
+    html = html.replace(f"img/{img.name}\"", f"img/{img.name}?v={sha(img)[:8]}\"")
 (DIST / "index.html").write_text(html)
 
 # Invite links land here (https://moshgrid.vercel.app/add#code); the code stays in the fragment.
