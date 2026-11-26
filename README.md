@@ -76,8 +76,8 @@ Release builds are signed with a key that is not in this repository. Crash and f
 The website lists the SHA-256 of each APK and of the signing certificate. Compare them with:
 
 ```sh
-shasum -a 256 MoshGrid-1.4.1.apk
-apksigner verify --print-certs MoshGrid-1.4.1.apk
+shasum -a 256 MoshGrid-1.4.2.apk
+apksigner verify --print-certs MoshGrid-1.4.2.apk
 ```
 
 ## Made by

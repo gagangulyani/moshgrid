@@ -122,6 +122,9 @@ class PermissionManager(private val context: Context) {
      * Must be requested after foreground location permissions are granted.
      */
     fun needsBackgroundLocationPermission(): Boolean {
+        // MoshGrid's Google Play build doesn't declare it (Play restricts it; the foreground service
+        // has location while it runs), so it can never be granted there: don't ask.
+        if (com.bitchat.android.BuildConfig.PLAY_STORE) return false
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
     }
 

@@ -39,8 +39,8 @@ android {
         applicationId = "com.moshgrid.android"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 11
-        versionName = "1.4.1-moshgrid"
+        versionCode = 12
+        versionName = "1.4.2-moshgrid"
         buildConfigField(
             "String",
             "GITHUB_RELEASE_CERT_SHA256",
@@ -48,6 +48,8 @@ android {
         )
         // MoshGrid: Sentry DSN comes from -PsentryDsn=... or ~/.gradle/gradle.properties. Empty disables Sentry.
         buildConfigField("String", "SENTRY_DSN", "\"${(project.findProperty("sentryDsn") as String?) ?: ""}\"")
+        // Google Play build (buildType "play"): no self-updates; Play installs updates.
+        buildConfigField("boolean", "PLAY_STORE", "false")
 
         testInstrumentationRunner = if (composerUiTests) {
             "com.bitchat.android.ui.ComposerPanicTestRunner"
@@ -110,6 +112,13 @@ android {
                 // without depending on host-specific Git/worktree paths.
                 include = false
             }
+        }
+        // Google Play: the release build without the self-updater and without permissions MoshGrid
+        // doesn't use (src/play/AndroidManifest.xml). `./gradlew :app:bundlePlay`.
+        create("play") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            buildConfigField("boolean", "PLAY_STORE", "true")
         }
     }
 

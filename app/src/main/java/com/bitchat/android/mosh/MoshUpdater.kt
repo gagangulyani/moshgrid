@@ -112,6 +112,7 @@ object MoshUpdater {
     /** From app start and the minute ticker. Cheap when nothing is due. */
     fun maybeCheck(context: Context) {
         val app = context.applicationContext
+        if (BuildConfig.PLAY_STORE) return  // Play installs updates; Play policy forbids self-updates
         if (!MoshRuntime.isInitialised || !MoshRuntime.prefs.internet) return
         val now = System.currentTimeMillis()
         if (now - lastCheckMs < CHECK_EVERY_MS) {
@@ -148,6 +149,7 @@ object MoshUpdater {
      */
     fun checkNow(context: Context) {
         val app = context.applicationContext
+        if (BuildConfig.PLAY_STORE) return  // Play installs updates; Play policy forbids self-updates
         if (!MoshRuntime.isInitialised || !MoshRuntime.prefs.internet) {
             _check.value = Check.Error("Internet is off for MoshGrid. Turn it on in Network to check.")
             return
@@ -173,6 +175,7 @@ object MoshUpdater {
 
     /** "Update" tapped. */
     fun start(context: Context) {
+        if (BuildConfig.PLAY_STORE) return  // Play installs updates; Play policy forbids self-updates
         val s = _state.value
         val u = when (s) { is State.Available -> s.update; is State.Failed -> s.update; else -> return }
         scope.launch { lock.withLock { install(context.applicationContext, u) } }

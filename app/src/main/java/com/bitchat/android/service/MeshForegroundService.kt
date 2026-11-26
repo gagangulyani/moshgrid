@@ -30,6 +30,8 @@ class MeshForegroundService : Service() {
     companion object {
         private const val CHANNEL_ID = "bitchat_mesh_service"
         private const val NOTIFICATION_ID = 10001
+        private const val RESUME_CHANNEL_ID = "mosh_resume_location"
+        private const val RESUME_NOTIFICATION_ID = 10002
 
         const val ACTION_START = "com.bitchat.android.service.START"
         const val ACTION_STOP = "com.bitchat.android.service.STOP"
@@ -370,12 +372,14 @@ class MeshForegroundService : Service() {
             try {
                 startForeground(NOTIFICATION_ID, notification, type)
                 hasLocationType = type and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION != 0
+                if (hasLocationType) NotificationManagerCompat.from(this).cancel(RESUME_NOTIFICATION_ID)
             } catch (e: SecurityException) {
                 // Fallback for cases where "While In Use" permission exists but background start is restricted
                 if (type and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION != 0) {
                      android.util.Log.w("MeshForegroundService", "Failed to start with LOCATION type, falling back to CONNECTED_DEVICE: ${e.message}")
                      startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
                      hasLocationType = false
+                     askToResumeLocation()
                 } else {
                     throw e
                 }
@@ -383,6 +387,32 @@ class MeshForegroundService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+    }
+
+    /**
+     * Started from the background (after a restart or an update), Android gave the service no location
+     * access. Tapping this notification restarts it from a notification, which Android does allow,
+     * so friends see this phone again without the app having to be opened.
+     */
+    private fun askToResumeLocation() {
+        runCatching {
+            val sharing = com.bitchat.android.mosh.MoshRuntime.isInitialised && com.bitchat.android.mosh.MoshRuntime.prefs.shareLocation
+            if (!sharing) return
+            if (Build.VERSION.SDK_INT >= 33 && androidx.core.content.ContextCompat.checkSelfPermission(
+                    this, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+            val nm = getSystemService(NotificationManager::class.java) ?: return
+            if (nm.getNotificationChannel(RESUME_CHANNEL_ID) == null) {
+                nm.createNotificationChannel(NotificationChannel(RESUME_CHANNEL_ID, "Location sharing", NotificationManager.IMPORTANCE_DEFAULT))
+            }
+            val resume = PendingIntent.getForegroundService(this, RESUME_NOTIFICATION_ID,
+                Intent(this, MeshForegroundService::class.java).setAction(ACTION_START),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            NotificationManagerCompat.from(this).notify(RESUME_NOTIFICATION_ID, NotificationCompat.Builder(this, RESUME_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Tap to keep sharing your location")
+                .setContentText("Your phone restarted, so friends can't see you until you tap.")
+                .setContentIntent(resume).setAutoCancel(true).build())
+        }.onFailure { com.bitchat.android.mosh.MoshMonitor.failed("notify_failed", it) }
     }
 
     override fun onDestroy() {

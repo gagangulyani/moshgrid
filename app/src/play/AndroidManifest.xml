@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Google Play build: Play installs updates (no self-updater), and permissions MoshGrid doesn't
+     use are removed: background location (the foreground service has location while it runs),
+     audio and media (voice notes and media messages are hidden; the profile photo uses the photo
+     picker), and data-sync foreground work (the upstream APK downloader isn't reachable). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" tools:node="remove" />
+    <!-- Play restricts this; setup's battery step opens the system list instead. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" tools:node="remove" />
+    <application>
+        <service
+            android:name="com.bitchat.android.service.MeshForegroundService"
+            android:foregroundServiceType="connectedDevice|location"
+            tools:replace="android:foregroundServiceType" />
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            tools:node="remove" />
+        <receiver
+            android:name="com.bitchat.android.mosh.UpdateStatusReceiver"
+            tools:node="remove" />
+    </application>
+</manifest>

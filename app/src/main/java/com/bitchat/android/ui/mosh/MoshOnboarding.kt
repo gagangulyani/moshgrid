@@ -325,7 +325,8 @@ private fun PocketStep() {
     ActionCard(Icons.Outlined.BatteryChargingFull, "Battery: unrestricted", "So it keeps running all show", unrestricted, "Allow") {
         val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + context.packageName))
         val list = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-        runCatching { context.startActivity(direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        // The Play build can't ask directly (the permission is removed there): open the system list.
+        runCatching { context.startActivity((if (com.bitchat.android.BuildConfig.PLAY_STORE) list else direct).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             .onFailure { runCatching { context.startActivity(list.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.onFailure { com.bitchat.android.mosh.MoshMonitor.failed("settings_open_failed", it) } }
     }
     ActionCard(Icons.Outlined.NotificationsActive, "Ring Help on silent", "Even in Do Not Disturb", dnd, "Allow") {

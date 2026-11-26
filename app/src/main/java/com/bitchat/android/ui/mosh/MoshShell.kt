@@ -440,6 +440,12 @@ private fun AboutPage() {
 @Composable
 private fun UpdateRow() {
     val context = LocalContext.current
+    if (com.bitchat.android.BuildConfig.PLAY_STORE) {
+        MoshActionRow("Updates", "Google Play keeps MoshGrid up to date", Icons.Outlined.Refresh) {
+            openWeb(context, "https://play.google.com/store/apps/details?id=" + context.packageName)
+        }
+        return
+    }
     val updater = com.bitchat.android.mosh.MoshUpdater
     val state = updater.state.collectAsState().value
     val check = updater.check.collectAsState().value
