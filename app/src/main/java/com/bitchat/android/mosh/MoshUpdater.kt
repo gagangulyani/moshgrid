@@ -51,10 +51,19 @@ object UpdateManifest {
     }.getOrNull()
 }
 
+/** When an update that the regular check found installs by itself. Installing restarts the app. */
+object UpdatePolicy {
+    /** On mobile data, wait until MoshGrid hasn't been open for this long, so it never restarts mid-gig. */
+    const val IDLE_MS = 60 * 60_000L
+
+    fun autoInstall(onWifi: Boolean, helpLive: Boolean, inUse: Boolean, lastUsedMs: Long, nowMs: Long): Boolean =
+        !helpLive && (onWifi || (!inUse && nowMs - lastUsedMs >= IDLE_MS))
+}
+
 /**
  * Keeps MoshGrid up to date from moshgrid.vercel.app (the same place people download it).
  * Checks at most every [CHECK_EVERY_MS] while Internet is on. On Wi-Fi it downloads by itself;
- * on mobile data it waits for a tap. An APK is installed only if its SHA-256 matches version.json
+ * on mobile data it waits until the app hasn't been open for [UpdatePolicy.IDLE_MS] (or a tap). An APK is installed only if its SHA-256 matches version.json
  * and it is signed with the same key as this app. Android asks the person to confirm the first
  * update (and whenever it requires); on Android 12+ later ones can install without a tap.
  */
@@ -88,15 +97,36 @@ object MoshUpdater {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
     @Volatile private var lastCheckMs = 0L
+    @Volatile private var inUse = false
+    /** When MoshGrid was last on screen. Starts at process start, so a fresh start never counts as idle. */
+    @Volatile private var lastUsedMs = System.currentTimeMillis()
+
+    /** Call once on the main thread at app start: tracks when any MoshGrid screen is showing. */
+    fun watchUse() {
+        androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onStart(owner: androidx.lifecycle.LifecycleOwner) { inUse = true }
+            override fun onStop(owner: androidx.lifecycle.LifecycleOwner) { inUse = false; lastUsedMs = System.currentTimeMillis() }
+        })
+    }
 
     /** From app start and the minute ticker. Cheap when nothing is due. */
     fun maybeCheck(context: Context) {
         val app = context.applicationContext
         if (!MoshRuntime.isInitialised || !MoshRuntime.prefs.internet) return
         val now = System.currentTimeMillis()
-        if (now - lastCheckMs < CHECK_EVERY_MS) return
+        if (now - lastCheckMs < CHECK_EVERY_MS) {
+            // Found earlier but waiting (mobile data, app in use, or Help): install once it's a good moment.
+            val waiting = (_state.value as? State.Available)?.update ?: return
+            if (autoInstallNow(app)) scope.launch { runCatching { lock.withLock { if (_state.value is State.Available) install(app, waiting) } } }
+            return
+        }
         lastCheckMs = now
         scope.launch { runCatching { check(app) } }
+    }
+
+    private fun autoInstallNow(context: Context): Boolean {
+        val helpLive = MoshRuntime.help.activeAlertId != null || MoshRuntime.store.activeHelp.value.isNotEmpty()
+        return UpdatePolicy.autoInstall(onWifi(context), helpLive, inUse, lastUsedMs, System.currentTimeMillis())
     }
 
     private suspend fun check(context: Context) = lock.withLock {
@@ -106,9 +136,7 @@ object MoshUpdater {
             _state.value = State.Idle; return@withLock
         }
         _state.value = State.Available(update)
-        // Installing restarts the app: never on its own while someone needs Help.
-        val helpLive = MoshRuntime.help.activeAlertId != null || MoshRuntime.store.activeHelp.value.isNotEmpty()
-        if (onWifi(context) && !helpLive) install(context, update)
+        if (autoInstallNow(context)) install(context, update)
     }
 
     /**

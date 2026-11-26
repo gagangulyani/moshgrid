@@ -18,6 +18,7 @@ class BitchatApplication : Application() {
             com.bitchat.android.mosh.MoshRuntime.init(this)
             com.bitchat.android.mosh.monitor.Monitoring.init(this, com.bitchat.android.mosh.MoshRuntime.prefs)
             com.bitchat.android.mosh.MoshStartup.onAppStart(this)
+            com.bitchat.android.mosh.MoshUpdater.watchUse()
         } catch (e: Exception) {
             android.util.Log.e("MoshGrid", "MoshGrid init failed: ${e.javaClass.simpleName}")
         }
