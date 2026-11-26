@@ -70,4 +70,12 @@ class FailureReportingTest {
         val o = out.contexts.operatingSystem!!
         assertEquals("16", o.version); assertNull(o.kernelVersion); assertNull(o.build)
     }
+
+    @Test fun `a silent failure is titled by its event name, not the exception text`() {
+        val e = SentryEvent().apply {
+            exceptions = listOf(SentryException().apply { type = "ActivityNotFoundException"; value = "No Activity for intent https://x.example/ana" })
+            fingerprints = listOf("failure", "open_link_failed")
+        }
+        assertEquals("open_link_failed", Scrubber.scrub(e).exceptions!![0].value)
+    }
 }

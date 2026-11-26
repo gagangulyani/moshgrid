@@ -26,6 +26,9 @@ object Scrubber {
         // Exception messages can quote whatever the code was handling (a name, a message, an ID).
         // Keep the exception type and stack, which say where it broke, and drop the text.
         event.exceptions?.forEach { it.value = null }
+        // A silent failure is titled by its event name (e.g. "ActivityNotFoundException: open_link_failed").
+        val fp = event.fingerprints
+        if (fp != null && fp.size == 2 && fp[0] == "failure" && EVENT_TEXT.matches(fp[1])) event.exceptions?.lastOrNull()?.value = fp[1]
         // Device and OS: only what helps fix a bug. No install ID, timezone, locale, boot time,
         // battery or storage figures, which together could single out a phone or hint where it is.
         event.contexts.device?.let { d ->
