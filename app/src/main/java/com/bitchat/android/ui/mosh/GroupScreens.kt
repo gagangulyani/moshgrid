@@ -159,7 +159,8 @@ fun NewGroupScreen(myName: String, onBack: () -> Unit, onCreated: (String) -> Un
             error?.let { item { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(20.dp)) } }
         }
         BottomAction("Make group", enabled = name.isNotBlank() && picked.isNotEmpty()) {
-            val id = runCatching { MoshGroups.create(name, myName, friends.filter { it.peerID in picked }) }.getOrNull()
+            val id = runCatching { MoshGroups.create(name, myName, friends.filter { it.peerID in picked }) }
+                .onFailure { com.bitchat.android.mosh.MoshMonitor.failed("group_create_failed", it) }.getOrNull()
             if (id != null) onCreated(id) else error = "Couldn't make the group yet. Try again in a moment."
         }
     }

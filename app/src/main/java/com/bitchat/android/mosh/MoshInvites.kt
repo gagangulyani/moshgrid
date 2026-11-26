@@ -186,7 +186,7 @@ object MoshInvites {
                     .setContentTitle("Friend request").build())
                 .build()
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, n)
-        }
+        }.onFailure { MoshMonitor.failed("notify_failed", it) }
     }
 
     private fun cancelNotification(context: Context) { runCatching { NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID) } }

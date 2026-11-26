@@ -17,9 +17,10 @@ object MoshNetworkGate {
     /** Apply the saved choices now. Called at start and whenever a checkbox changes. */
     fun apply(context: Context, prefs: MoshPrefs) {
         internetAllowed = prefs.internet
-        runCatching { DebugSettingsManager.getInstance().setBleEnabled(prefs.bluetooth) }
-        runCatching { OfflineMaps.applyInternet() }
-        val relays = runCatching { NostrRelayManager.getInstance(context.applicationContext) }.getOrNull() ?: return
+        runCatching { DebugSettingsManager.getInstance().setBleEnabled(prefs.bluetooth) }.onFailure { MoshMonitor.failed("network_apply_failed", it) }
+        runCatching { OfflineMaps.applyInternet() }.onFailure { MoshMonitor.failed("network_apply_failed", it) }
+        val relays = runCatching { NostrRelayManager.getInstance(context.applicationContext) }
+            .onFailure { MoshMonitor.failed("network_apply_failed", it) }.getOrNull() ?: return
         if (prefs.internet) relays.connect() else relays.disconnect()
         watchNetwork(context.applicationContext, relays)
     }

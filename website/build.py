@@ -12,6 +12,9 @@ VERSION = VERSION.replace("-moshgrid", "")
 VERSION_CODE = int(re.search(r"versionCode = (\d+)", (ROOT / "app/build.gradle.kts").read_text()).group(1))
 REL = ROOT / "app/build/outputs/apk/release"
 
+from html import escape as html_escape
+LEGAL_DATE = "26 November 2026"  # change when the privacy policy or terms change
+
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def mb(p): return f"{p.stat().st_size / 1e6:.0f} MB"
 
@@ -42,11 +45,23 @@ p1, p2 = re.findall(r'android:pathData="(M[^"]+L[^"]+)"', icon)[:2]
     f'<path d="{p2}" fill="none" stroke="#3DF2FF" stroke-width="3.4" stroke-linecap="round"/>'
     f'<circle cx="81" cy="54" r="4.8" transform="rotate(22 54 54)" fill="#FF5CDB"/><circle cx="54" cy="54" r="3.7" fill="#fff"/></svg>')
 
+owner = json.loads((SITE / "owner.json").read_text())
+missing = [k for k in ("name", "contact", "jurisdiction", "bio") if not str(owner.get(k, "")).strip()]
+assert not missing, f"website/owner.json is missing: {missing}"
+contact = owner["contact"].strip()
+CONTACT_HREF = ("mailto:" + contact) if "@" in contact and "://" not in contact else contact
 html = (SITE / "index.template.html").read_text()
 values = {"P1": p1, "P2": p2, "VERSION": VERSION, "APK_ARM": arm.name, "APK_UNI": uni.name, "SRC_ZIP": src.name,
           "SIZE_ARM": mb(arm), "SIZE_UNI": mb(uni), "SIZE_SRC": mb(src), "SHA_ARM": sha(arm), "SHA_UNI": sha(uni),
           "CERT_SHA": ":".join(cert[i:i + 2] for i in range(0, len(cert), 2)).upper()}
 for k, v in values.items():
+    html = html.replace("{{" + k + "}}", v)
+# "Made by": paragraphs of the bio, then links, all escaped (owner.json is plain text).
+bio = "\n    ".join(f"<p>{html_escape(p.strip())}</p>" for p in owner["bio"].split("\n\n") if p.strip())
+links = owner.get("links") or []
+for l in links: assert l["url"].startswith("https://"), l
+links_html = ("<ul>" + "".join(f'<li><a href="{html_escape(l["url"])}">{html_escape(l["label"])}</a></li>' for l in links) + "</ul>") if links else ""
+for k, v in {"OWNER_NAME": html_escape(owner["name"].strip()), "OWNER_BIO": bio, "OWNER_LINKS": links_html, "CONTACT_HREF": html_escape(CONTACT_HREF)}.items():
     html = html.replace("{{" + k + "}}", v)
 assert "{{" not in html, re.findall(r"\{\{\w+\}\}", html)
 # Images are cached for a week, so tag each one with its content hash: a changed image gets a new URL.
@@ -60,6 +75,19 @@ add = (SITE / "add.template.html").read_text().replace("{{VERSION}}", VERSION)
 
 # Socials codes land here (https://moshgrid.vercel.app/s#…); the links stay in the fragment.
 (DIST / "s.html").write_text((SITE / "s.template.html").read_text().replace("{{VERSION}}", VERSION))
+
+# Privacy policy and terms (https://moshgrid.vercel.app/privacy, /terms). Who runs MoshGrid comes from owner.json;
+# the build stops if any of it is missing, so a placeholder can never go live.
+legal = {"OWNER_NAME": html_escape(owner["name"].strip()), "CONTACT": html_escape(contact),
+         "CONTACT_HREF": html_escape(CONTACT_HREF),
+         "JURISDICTION": html_escape(owner["jurisdiction"].strip()), "LEGAL_DATE": LEGAL_DATE,
+         "LEGAL_STYLE": (SITE / "legal.css.html").read_text()}
+for page in ("privacy", "terms"):
+    text = (SITE / f"{page}.template.html").read_text()
+    for k, v in legal.items():
+        text = text.replace("{{" + k + "}}", v)
+    assert "{{" not in text, re.findall(r"\{\{\w+\}\}", text)
+    (DIST / f"{page}.html").write_text(text)
 
 # Lets Android open invite links straight in the app (verified App Link), for the release key only.
 (DIST / ".well-known").mkdir()
@@ -85,7 +113,7 @@ add = (SITE / "add.template.html").read_text().replace("{{VERSION}}", VERSION)
 # Search engines and installable-site metadata.
 (DIST / "robots.txt").write_text(f"User-agent: *\nAllow: /\nDisallow: /downloads/\n\nSitemap: {SITE_URL}sitemap.xml\n")
 (DIST / "sitemap.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-                                  f'<url><loc>{SITE_URL}</loc></url></urlset>\n')
+                                  f'<url><loc>{SITE_URL}</loc></url><url><loc>{SITE_URL}privacy</loc></url><url><loc>{SITE_URL}terms</loc></url></urlset>\n')
 (DIST / "site.webmanifest").write_text(json.dumps({
     "name": "MoshGrid", "short_name": "MoshGrid", "start_url": "/", "display": "browser",
     "background_color": "#000000", "theme_color": "#000000",

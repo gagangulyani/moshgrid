@@ -181,6 +181,10 @@ private fun EmergencyLine(text: String) {
         Text(text, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         TextButton(onClick = {
             runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                .onFailure {
+                    com.bitchat.android.mosh.MoshMonitor.failed("dial_failed", it)
+                    android.widget.Toast.makeText(context, "Couldn't open the phone app. Dial 112 yourself.", android.widget.Toast.LENGTH_LONG).show()
+                }
         }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Call 112", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error) }
     }
 }

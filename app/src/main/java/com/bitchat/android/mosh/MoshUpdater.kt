@@ -117,11 +117,14 @@ object MoshUpdater {
         if (now - lastCheckMs < CHECK_EVERY_MS) {
             // Found earlier but waiting (mobile data, app in use, or Help): install once it's a good moment.
             val waiting = (_state.value as? State.Available)?.update ?: return
-            if (autoInstallNow(app)) scope.launch { runCatching { lock.withLock { if (_state.value is State.Available) install(app, waiting) } } }
+            if (autoInstallNow(app)) scope.launch {
+                runCatching { lock.withLock { if (_state.value is State.Available) install(app, waiting) } }
+                    .onFailure { MoshMonitor.failed("update_failed", it) }
+            }
             return
         }
         lastCheckMs = now
-        scope.launch { runCatching { check(app) } }
+        scope.launch { runCatching { check(app) }.onFailure { MoshMonitor.failed("update_check_failed", it) } }
     }
 
     private fun autoInstallNow(context: Context): Boolean {
@@ -199,6 +202,7 @@ object MoshUpdater {
                 session.commit(status.intentSender)
             }
         } catch (e: Exception) {
+            if (e !is java.io.IOException) MoshMonitor.failed("update_failed", e)
             fail(u, file, "Couldn't update: check your connection and try again.")
         }
     }

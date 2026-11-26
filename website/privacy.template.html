@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy · MoshGrid</title>
+<meta name="description" content="What MoshGrid collects, where it goes, and how to turn it off.">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/poi.svg" type="image/svg+xml">
+{{LEGAL_STYLE}}
+</head>
+<body>
+<main>
+  <a class="home" href="/"><img src="/poi.svg" alt="" width="32" height="32"> MoshGrid</a>
+  <h1>Privacy policy</h1>
+  <p class="meta">Effective {{LEGAL_DATE}}. Applies to the MoshGrid Android app from version 1.4.0 and to this website.</p>
+
+  <section class="short">
+    <h2>The short version</h2>
+    <ul>
+      <li>No accounts. No ads. No analytics or tracking. We never sell or share data for marketing.</li>
+      <li>Your messages, location, photos and friends are encrypted so only the friends they are for can open them. We can't read them.</li>
+      <li>Crash and problem reports are on by default and turn off with one switch. They never contain your location, messages, name or friends.</li>
+      <li>Erase everything on this phone, in You, deletes everything MoshGrid keeps on your phone.</li>
+    </ul>
+  </section>
+
+  <h2>Who runs MoshGrid</h2>
+  <p>MoshGrid is made and run by {{OWNER_NAME}} (“we”), an individual, not a company. Contact: <a href="{{CONTACT_HREF}}">{{CONTACT}}</a>.</p>
+
+  <h2>What stays on your phone</h2>
+  <p>Your name in the app, your friends list, messages, groups, your friends’ last known locations, profile photos, saved socials, offline maps and an on-phone log of app events. MoshGrid has no copy of these on any server. They leave your phone only as described below.</p>
+
+  <h2>What leaves your phone, and where it goes</h2>
+  <h3>To nearby phones, over Bluetooth</h3>
+  <p>Messages, Help alerts, locations and photos for your friends are encrypted on your phone and can be passed along by other MoshGrid phones nearby until they reach your friend. Phones in between can’t open them. Nearby MoshGrid phones can tell that a MoshGrid phone is near them, but not whose: your name in the app goes only to your friends.</p>
+
+  <h3>Over the internet, through relays (when Internet is on for MoshGrid)</h3>
+  <p>The same encrypted messages also go through relay servers, so friends out of Bluetooth range get them: our own relay (relay.gagangulyani.com) and four public relays run by other people (relay.damus.io, relay.primal.net, offchain.pub, nostr21.com). Relays see your phone’s IP address, the app’s random key for you (not your name or number) and when you send, but not what you send. Our relay deletes everything after 4 days. Public relays keep data under their own rules, which we don’t control. Turn Internet off in You, then Network, and MoshGrid uses Bluetooth only.</p>
+
+  <h3>Location</h3>
+  <p>MoshGrid uses your phone’s location to show you on the map and compass and to share it with your friends if you choose (You, then Location). It goes only to your friends, encrypted. It is never sent to us, and never in a report. If you hold Help, your location and the note you write go to all your friends.</p>
+
+  <h3>Crash, failure and problem reports</h3>
+  <p>When something crashes or quietly fails (a button that does nothing, a map that won’t load), MoshGrid can send a report to our own error server (errors.gagangulyani.com). This is on by default; the switch is shown during setup, nothing is sent before setup ends, and you can turn it off any time in You, then Crash reports. A report contains: what failed (an event name and, for errors, where in the code it happened, without the error text), your phone maker and model, Android version, MoshGrid version, which app permissions are allowed, and counts of recent app events. It never contains your location, messages, name, friends, photos, a phone identifier, your timezone or your language. At most about ten failure reports an hour leave a phone.</p>
+  <p>“Report a problem” in You sends the note you write and the same counts, once, when you tap Send, even if crash reports are off. Only write what you are happy for us to read.</p>
+  <p>Our error server sees the IP address a report comes from, as any website does; we don’t use it to identify anyone. Reports are kept for up to 90 days, then deleted.</p>
+
+  <h3>Updates</h3>
+  <p>Every few hours MoshGrid asks this website whether a new version exists, and downloads it if so. This website is hosted by Vercel, whose servers see your IP address and keep short-lived request logs.</p>
+
+  <h3>Offline maps</h3>
+  <p>When you save a street map, the map pictures for that area come from OpenFreeMap (tiles.openfreemap.org), which sees your IP address and which area you downloaded. Venue maps are built into the app and need no download.</p>
+
+  <h3>Invites and socials</h3>
+  <p>An invite link you send goes through whichever app you choose (WhatsApp, SMS and so on). If you pick a contact to invite, MoshGrid reads only that contact’s name and number to fill in the message, and keeps neither. Your socials code holds only the name and links you chose; it is shown on your screen and read by someone else’s camera. When someone opens a socials or invite link on this website, the part after # stays in their browser and isn’t sent to our server.</p>
+
+  <h2>Permissions</h2>
+  <ul>
+    <li><b>Bluetooth and nearby devices:</b> to reach friends’ phones without signal.</li>
+    <li><b>Location:</b> to show you on the map and compass, and to share with friends if you choose.</li>
+    <li><b>Notifications:</b> for messages, friend requests and Help alerts. <b>Do Not Disturb access</b> (optional) lets a Help alert ring when your phone is on silent.</li>
+    <li><b>Camera:</b> to scan friend and socials codes. Nothing is recorded or saved.</li>
+    <li><b>Photos:</b> only the one picture you pick for your profile.</li>
+    <li><b>Contacts picker:</b> only the one contact you pick, to send an invite.</li>
+    <li><b>Install apps:</b> so MoshGrid can install its own updates, which it checks are signed with the MoshGrid key.</li>
+  </ul>
+
+  <h2>Your choices and rights</h2>
+  <p>You control what leaves your phone with the switches in You: Location, Network (Bluetooth and Internet) and Crash reports. Erase everything on this phone, at the bottom of You, deletes all MoshGrid data on it, including reports not yet sent. Uninstalling does the same.</p>
+  <p>We hold no account or profile for you, so in most cases there is nothing on our side to look up or delete. If you want to ask about, correct or delete anything we may hold (such as a problem report you sent), or to raise a complaint, write to <a href="{{CONTACT_HREF}}">{{CONTACT}}</a>. We will reply within 30 days. In India you can also take a complaint to the Data Protection Board of India.</p>
+
+  <h2>Children</h2>
+  <p>MoshGrid is meant for people aged 18 and over. Anyone younger should use it only with a parent or guardian’s permission.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the new version goes on this page with a new date, and the app’s release notes say so.</p>
+</main>
+<footer><a href="/">MoshGrid</a> · <a href="/terms">Terms of use</a> · <a href="https://github.com/gagangulyani/moshgrid">Source code</a></footer>
+</body>
+</html>

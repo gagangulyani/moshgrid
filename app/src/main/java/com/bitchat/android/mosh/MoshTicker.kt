@@ -29,14 +29,14 @@ class MoshTicker(private val context: Context, private val scope: CoroutineScope
             while (isActive) {
                 heartbeat.beat()
                 // Location permission may have been granted after the service started.
-                runCatching { sharer.start() }
+                runCatching { sharer.start() }.onFailure { MoshMonitor.event(context, "location_start_failed", e = it) }
                 // A failure in one tick must not end the loop: Help repeats depend on it.
-                runCatching { MoshRuntime.help.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
-                runCatching { MoshRuntime.meeting.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
-                runCatching { MoshGroups.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
-                runCatching { ProfilePhotos.tick() }.onFailure { MoshMonitor.event(context, "tick_failed") }
-                runCatching { MoshInvites.tick(context) }.onFailure { MoshMonitor.event(context, "tick_failed") }
-                runCatching { MoshUpdater.maybeCheck(context) }
+                runCatching { MoshRuntime.help.tick() }.onFailure { MoshMonitor.event(context, "tick_failed", e = it) }
+                runCatching { MoshRuntime.meeting.tick() }.onFailure { MoshMonitor.event(context, "tick_failed", e = it) }
+                runCatching { MoshGroups.tick() }.onFailure { MoshMonitor.event(context, "tick_failed", e = it) }
+                runCatching { ProfilePhotos.tick() }.onFailure { MoshMonitor.event(context, "tick_failed", e = it) }
+                runCatching { MoshInvites.tick(context) }.onFailure { MoshMonitor.event(context, "tick_failed", e = it) }
+                runCatching { MoshUpdater.maybeCheck(context) }.onFailure { MoshMonitor.event(context, "update_check_failed", e = it) }
                 val btOn = bluetoothOn()
                 if (btWasOn && !btOn) MoshMonitor.event(context, "bt_off")
                 btWasOn = btOn

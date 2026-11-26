@@ -326,10 +326,11 @@ private fun PocketStep() {
         val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + context.packageName))
         val list = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
         runCatching { context.startActivity(direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            .onFailure { runCatching { context.startActivity(list.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+            .onFailure { runCatching { context.startActivity(list.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.onFailure { com.bitchat.android.mosh.MoshMonitor.failed("settings_open_failed", it) } }
     }
     ActionCard(Icons.Outlined.NotificationsActive, "Ring Help on silent", "Even in Do Not Disturb", dnd, "Allow") {
         runCatching { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { com.bitchat.android.mosh.MoshMonitor.failed("settings_open_failed", it) }
     }
     if (Build.VERSION.SDK_INT >= 33) {
         val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { checks++ }
@@ -359,10 +360,10 @@ private fun batteryUnrestricted(context: Context): Boolean =
 
 @Composable
 private fun ReportsStep(monitoring: Boolean, onMonitoring: (Boolean) -> Unit) {
-    StepTitle("Help us fix crashes?", "On unless you turn it off. Never your location or messages.")
+    StepTitle("Help us fix problems?", "On unless you turn it off. Never your location or messages.")
     SwitchCard(null, "Send crash reports", null, monitoring, onMonitoring)
     Why("What's in a report?", listOf(
-        "What went wrong in the app, plus your phone model and Android version.",
+        "What went wrong in the app (a crash, or something that failed without crashing), plus your phone model and Android version.",
         "Never your location, messages, name or friends.",
         "Reports go to MoshGrid's own server, and only when Internet is on.",
         "Turn this off any time in Settings. It stops straight away.",
@@ -375,6 +376,15 @@ private fun ReportsStep(monitoring: Boolean, onMonitoring: (Boolean) -> Unit) {
         Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
         Text("Not an emergency service. In danger, call 112.", fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onErrorContainer)
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Text("By starting MoshGrid you agree to the terms of use. The privacy policy says what it collects.",
+        fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        Text("Terms of use", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { openWeb(context, TERMS_URL) }.padding(vertical = 8.dp))
+        Text("Privacy policy", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { openWeb(context, PRIVACY_URL) }.padding(vertical = 8.dp))
     }
 }
 

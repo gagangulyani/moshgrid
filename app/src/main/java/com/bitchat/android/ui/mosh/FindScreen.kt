@@ -292,7 +292,7 @@ private fun rememberTurnOnLocation(onResult: () -> Unit): () -> Unit {
         else runCatching {
             context.startActivity(android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
+        }.onFailure { com.bitchat.android.mosh.MoshMonitor.failed("settings_open_failed", it) }
     }
 }
 
@@ -689,7 +689,7 @@ private fun replaceVenueLayers(context: Context, style: Style, venue: Venue?) {
 
 private fun loadVenues(context: Context): List<Venue> = runCatching {
     VenueRegistry.load(context.assets.open("venues/venues.json").bufferedReader().use { it.readText() })
-}.getOrDefault(emptyList())
+}.onFailure { com.bitchat.android.mosh.MoshMonitor.failed("venues_load_failed", it) }.getOrDefault(emptyList())
 
 private fun ago(ms: Long): String = when {
     ms < 60_000 -> "just now"

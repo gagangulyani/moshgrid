@@ -64,7 +64,7 @@ class PrefsReceivedHelp(private val prefs: SharedPreferences) : ReceivedHelpPers
             String(Base64.decode(b64, Base64.NO_WRAP), Charsets.UTF_8) to at.toLong()
         }
         ReceivedHelp(active, cancelled)
-    }.getOrNull()
+    }.onFailure { MoshMonitor.failed("help_load_failed", it) }.getOrNull()
 
     override fun save(r: ReceivedHelp) {
         val active = r.active.entries.joinToString("\n") { (peer, h) ->
@@ -116,7 +116,7 @@ class PrefsFriendSnapshot(private val prefs: SharedPreferences) : FriendSnapshot
             ?.let { decode(NoisePayloadType.MEETING_POINT, it) as? MeetingPoint }
         val heard = lines(K_HEARD).associate { line -> val (peer, at) = line.split(" ", limit = 2); peer to at.toLong() }
         FriendSnapshot(locations, meeting, heard, prefs.getBoolean(K_MEETING_OWN, false))
-    }.getOrNull()
+    }.onFailure { MoshMonitor.failed("friends_load_failed", it) }.getOrNull()
 
     override fun save(s: FriendSnapshot) {
         prefs.edit()

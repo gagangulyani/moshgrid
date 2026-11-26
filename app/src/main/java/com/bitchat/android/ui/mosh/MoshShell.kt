@@ -62,7 +62,7 @@ import com.bitchat.android.mosh.MoshRuntime
 import com.bitchat.android.ui.ChatViewModel
 
 /** Pages opened from home (⋮ menu, network button, You), shown full screen with a back arrow. */
-private enum class Page { FRIENDS, NETWORK, LOCATION, MAPS, PROBLEMS, ABOUT, LINKS, MET }
+private enum class Page { FRIENDS, NETWORK, LOCATION, MAPS, PROBLEMS, REPORT, ABOUT, LINKS, MET }
 
 /** How loud an in-app banner is: Help is solid red, problems are amber, the rest are plain tiles. */
 private enum class Tone { HELP, WARN, INFO }
@@ -190,6 +190,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
             page == Page.LOCATION -> MoshPage("Location", { page = null }) { LocationPage() }
             page == Page.MAPS -> MoshPage("Offline maps", { page = null }) { OfflineMapsScreen() }
             page == Page.PROBLEMS -> MoshPage("Crash reports", { page = null }) { ProblemsPage() }
+            page == Page.REPORT -> MoshPage("Report a problem", { page = null }) { ReportPage() }
             page == Page.ABOUT -> MoshPage("About", { page = null }) { AboutPage() }
             page == Page.LINKS -> MoshPage("My links", { page = null }) { EditLinksPage() }
             page == Page.MET -> MoshPage("People I met", { page = null }) { PeopleMetPage() }
@@ -235,6 +236,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
                             onMaps = { page = Page.MAPS },
                             onNetwork = { page = Page.NETWORK },
                             onProblems = { page = Page.PROBLEMS },
+                            onReport = { page = Page.REPORT },
                             onAbout = { page = Page.ABOUT },
                             onErase = { chatViewModel.panicClearAllData() },
                         )
@@ -268,7 +270,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
 @Composable
 private fun YouScreen(
     name: String, onMyCode: () -> Unit, onFriends: () -> Unit, onLocation: () -> Unit, onMaps: () -> Unit,
-    onNetwork: () -> Unit, onProblems: () -> Unit, onAbout: () -> Unit, onErase: () -> Unit,
+    onNetwork: () -> Unit, onProblems: () -> Unit, onReport: () -> Unit, onAbout: () -> Unit, onErase: () -> Unit,
 ) {
     val prefs = MoshRuntime.prefs
     val cs = MaterialTheme.colorScheme
@@ -310,6 +312,7 @@ private fun YouScreen(
                         else -> "Relay connected" },
                 ).joinToString(" · "), Icons.Outlined.SignalCellularAlt, onNetwork)
                 MoshActionRow("Crash reports", if (prefs.monitoringOptIn) "On" else "Off", Icons.Outlined.BugReport, onProblems)
+                MoshActionRow("Report a problem", "Tell us what didn't work", Icons.Outlined.ChatBubbleOutline, onReport)
                 MoshActionRow("About", "Version ${appVersion(LocalContext.current)} · open source", Icons.Outlined.Info, onAbout)
             }
             EraseRow(onErase)
@@ -367,11 +370,12 @@ private fun ProblemsPage() {
             com.bitchat.android.mosh.monitor.Monitoring.init(context.applicationContext as android.app.Application, prefs)
         }
         Why("What's in a crash report?", listOf(
-            "What went wrong in the app, plus your phone model and Android version.",
+            "What went wrong in the app (a crash, or something that failed without crashing), plus your phone model and Android version.",
             "Never your location, messages, names or friends.",
             "Goes to MoshGrid's own server, only when Internet is on.",
             "Turning it off stops it straight away.",
         ))
+        MoshActionRow("Privacy policy", "What MoshGrid collects and why", Icons.Outlined.Info) { openWeb(context, PRIVACY_URL) }
         MoshActionRow("Share diagnostics", "Event counts only. You choose where to send it.", Icons.Outlined.Share) {
             // Recording the share also creates the log, so the button works on a fresh install or after a wipe.
             MoshMonitor.event(context, "diagnostics_shared")
@@ -381,6 +385,7 @@ private fun ProblemsPage() {
                 val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 runCatching { context.startActivity(Intent.createChooser(send, "Share diagnostics").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    .onFailure { com.bitchat.android.mosh.MoshMonitor.failed("share_failed", it) }
             }
         }
     }
@@ -412,8 +417,10 @@ private fun AboutPage() {
             runCatching {
                 context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/gagangulyani/moshgrid"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
+            }.onFailure { com.bitchat.android.mosh.MoshMonitor.failed("open_link_failed", it) }
         }
+        MoshActionRow("Privacy policy", "What MoshGrid collects and why", Icons.Outlined.Info) { openWeb(context, PRIVACY_URL) }
+        MoshActionRow("Terms of use", "The rules for using MoshGrid", Icons.Outlined.Info) { openWeb(context, TERMS_URL) }
     }
 }
 
@@ -458,6 +465,7 @@ private fun RadioBanners() {
         }
     }
     fun open(action: String) = runCatching { context.startActivity(android.content.Intent(action).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        .onFailure { com.bitchat.android.mosh.MoshMonitor.failed("settings_open_failed", it) }
     if (!btOn) Banner("Bluetooth is off", "Friends nearby can't reach you, or you them.", Tone.WARN, action = "Turn on") {
         open(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)
     }

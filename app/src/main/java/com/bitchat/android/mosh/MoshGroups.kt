@@ -46,7 +46,7 @@ object MoshGroups {
         store = GroupStore(myKeyHex = { myKeyHex() }, persistence = object : GroupPersistence {
             override fun load(): GroupSnapshot? = runCatching {
                 securePrefs.getString(PREFS_KEY, null)?.let { gson.fromJson(it, GroupSnapshot::class.java) }
-            }.getOrNull()?.let { sanitise(it) }
+            }.onFailure { MoshMonitor.failed("groups_load_failed", it) }.getOrNull()?.let { sanitise(it) }
             override fun save(s: GroupSnapshot) { securePrefs.edit().putString(PREFS_KEY, gson.toJson(s)).apply() }
         })
         MoshInbox.groupMember = { peer -> memberByPeer(peer) != null }
@@ -188,6 +188,6 @@ object MoshGroups {
     private fun send(p: MoshPayload, to: GroupMember, allowInternet: Boolean = true): Pair<Boolean, Boolean> {
         val peer = peerOf(to) ?: return false to false
         val t = transport ?: return false to false
-        return runCatching { t(p, peer, to, allowInternet) }.getOrDefault(false to false)
+        return runCatching { t(p, peer, to, allowInternet) }.onFailure { MoshMonitor.failed("group_send_failed", it) }.getOrDefault(false to false)
     }
 }

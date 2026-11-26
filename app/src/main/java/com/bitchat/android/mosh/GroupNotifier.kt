@@ -46,7 +46,7 @@ object GroupNotifier {
                     .setContentTitle("New group message").build())
                 .build()
             NotificationManagerCompat.from(context).notify(id(g.id), n)
-        }
+        }.onFailure { MoshMonitor.failed("notify_failed", it) }
     }
 
     fun cancel(context: Context, groupId: String) {

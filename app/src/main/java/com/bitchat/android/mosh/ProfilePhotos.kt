@@ -41,20 +41,20 @@ object ProfilePhotos {
 
     /** Picks up a photo from the photo picker. False if it could not be read. */
     suspend fun setMine(context: Context, uri: Uri): Boolean {
-        val jpeg = runCatching { prepare(context, uri) }.getOrNull() ?: return false
+        val jpeg = runCatching { prepare(context, uri) }.onFailure { MoshMonitor.failed("photo_read_failed", it) }.getOrNull() ?: return false
         return setMine(jpeg)
     }
 
     fun setMine(jpeg: ByteArray): Boolean {
         val b = book ?: return false
         b.setMine(jpeg) ?: return false
-        scope.launch { runCatching { tick() } }
+        scope.launch { runCatching { tick() }.onFailure { MoshMonitor.failed("tick_failed", it) } }
         return true
     }
 
     fun removeMine() {
         book?.removeMine() ?: return
-        scope.launch { runCatching { tick() } }
+        scope.launch { runCatching { tick() }.onFailure { MoshMonitor.failed("tick_failed", it) } }
     }
 
     /** From a friend (MoshInbox has already checked they are one). */

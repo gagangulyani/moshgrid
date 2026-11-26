@@ -174,9 +174,10 @@ object MoshRuntime {
         runCatching {
             val identity = SecureIdentityStateManager(context.applicationContext)
             identity.setVerifiedFingerprint(identity.generateFingerprint(key), false)
-        }
+        }.onFailure { MoshMonitor.failed("unfriend_failed", it) }
         // Tell them (Bluetooth if connected, else internet), so their list stops showing us as a friend.
         runCatching { com.bitchat.android.services.MessageRouter.tryGetInstance()?.sendFavoriteNotification(friend.peerID, false) }
+            .onFailure { MoshMonitor.failed("unfriend_failed", it) }
         prefs.setPaused(friend.peerID, false)
         HelpNotifier.cancel(context.applicationContext, listOf(friend.peerID))
         store.forget(friend.peerID)

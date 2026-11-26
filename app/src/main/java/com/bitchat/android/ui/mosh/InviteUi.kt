@@ -54,7 +54,7 @@ private fun inviteText(link: InviteLink) =
 
 /** Builds my link off the main thread (it needs the Keystore), then hands it over. */
 private suspend fun myLinkOrToast(context: Context, fresh: Boolean = false): InviteLink? {
-    val link = withContext(Dispatchers.IO) { runCatching { MoshInvites.myLink(context, fresh) }.getOrNull() }
+    val link = withContext(Dispatchers.IO) { runCatching { MoshInvites.myLink(context, fresh) }.onFailure { com.bitchat.android.mosh.MoshMonitor.failed("invite_link_failed", it) }.getOrNull() }
     if (link == null) Toast.makeText(context, "MoshGrid is still starting. Try again in a moment.", Toast.LENGTH_SHORT).show()
     return link
 }
@@ -88,7 +88,7 @@ fun InviteSection() {
             }
             InviteButton("Send to a contact", Icons.Outlined.Contacts, Modifier.weight(1f)) {
                 runCatching { pickContact.launch(Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)) }
-                    .onFailure { Toast.makeText(context, "No contacts app found.", Toast.LENGTH_SHORT).show() }
+                    .onFailure { com.bitchat.android.mosh.MoshMonitor.failed("contact_pick_failed", it); Toast.makeText(context, "No contacts app found.", Toast.LENGTH_SHORT).show() }
             }
         }
         Text("Anyone with your link can ask to add you; nobody is added until you accept. Links last 7 days. " +
@@ -111,7 +111,7 @@ fun InviteSection() {
                         runCatching {
                             context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(number)))
                                 .putExtra("sms_body", inviteText(link)))
-                        }.onFailure { Toast.makeText(context, "No messaging app found.", Toast.LENGTH_SHORT).show() }
+                        }.onFailure { com.bitchat.android.mosh.MoshMonitor.failed("share_failed", it); Toast.makeText(context, "No messaging app found.", Toast.LENGTH_SHORT).show() }
                     }
                 }) { Text("Text message") }
             },
@@ -125,7 +125,10 @@ fun InviteSection() {
                         val intent = if (number.trim().startsWith("+") && digits.length >= 8)
                             Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$digits?text=" + Uri.encode(inviteText(link))))
                         else Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, inviteText(link)), "Send your invite")
-                        runCatching { context.startActivity(intent) }
+                        runCatching { context.startActivity(intent) }.onFailure {
+                            com.bitchat.android.mosh.MoshMonitor.failed("share_failed", it)
+                            Toast.makeText(context, "No app found to send it with.", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }) { Text("WhatsApp or other") }
             },

@@ -367,7 +367,7 @@ private fun openLink(context: Context, link: String) {
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ok)).addCategory(Intent.CATEGORY_BROWSABLE)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }.onFailure { Toast.makeText(context, "No browser found to open this link.", Toast.LENGTH_SHORT).show() }
+    }.onFailure { com.bitchat.android.mosh.MoshMonitor.failed("open_link_failed", it); Toast.makeText(context, "No browser found to open this link.", Toast.LENGTH_SHORT).show() }
 }
 
 /** Edit my links: paste profile links; the name of each comes from its site. Saved as you type. */
