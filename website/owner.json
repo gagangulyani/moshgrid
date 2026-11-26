@@ -1,8 +1,20 @@
 {
  "_note": "Shown publicly on the website (privacy policy, terms, Made by) and in the app's About. Fill every field before building.",
- "name": "",
- "contact": "",
- "jurisdiction": "",
- "bio": "",
- "links": []
+ "name": "Gagan Deep Singh",
+ "contact": "gagangulyanig@gmail.com",
+ "bio": "Product engineer and indie hacker, based in Noida. I built MoshGrid so friends can find each other at gigs and festivals, even when the phone network gives up.",
+ "links": [
+  {
+   "label": "LinkedIn",
+   "url": "https://www.linkedin.com/in/gagan-gulyani"
+  },
+  {
+   "label": "X",
+   "url": "https://x.com/GaganGulyani"
+  },
+  {
+   "label": "Instagram",
+   "url": "https://www.instagram.com/life_of_gulyani"
+  }
+ ]
 }

@@ -68,15 +68,15 @@ Requires JDK 21 and the Android SDK versions in `gradle/libs.versions.toml`.
 
 Protocol specs for MoshGrid's own payloads: `docs/MOSH_GROUPS.md`, `docs/MOSH_PHOTOS.md`, `docs/MOSH_INVITES.md`.
 
-Release builds are signed with a key that is not in this repository. Crash reporting is off unless you build with `-PsentryDsn=...`, and in the app it is on by default: the switch is shown during setup, nothing is sent before setup ends, and it can be turned off any time in You. See `AGENTS.md` for project conventions and `docs/` for protocol specs and the release guide.
+Release builds are signed with a key that is not in this repository. Crash reporting is off unless you build with `-PsentryDsn=...`, and in the app it is on by default: the switch is shown during setup, nothing is sent before setup ends, and it can be turned off any time in You. Privacy policy: https://moshgrid.vercel.app/privacy. Terms: https://moshgrid.vercel.app/terms. See `AGENTS.md` for project conventions and `docs/` for protocol specs and the release guide.
 
 ## Verify a download
 
 The website lists the SHA-256 of each APK and of the signing certificate. Compare them with:
 
 ```sh
-shasum -a 256 MoshGrid-1.3.1.apk
-apksigner verify --print-certs MoshGrid-1.3.1.apk
+shasum -a 256 MoshGrid-1.4.0.apk
+apksigner verify --print-certs MoshGrid-1.4.0.apk
 ```
 
 ## Licence

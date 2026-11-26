@@ -46,7 +46,7 @@ p1, p2 = re.findall(r'android:pathData="(M[^"]+L[^"]+)"', icon)[:2]
     f'<circle cx="81" cy="54" r="4.8" transform="rotate(22 54 54)" fill="#FF5CDB"/><circle cx="54" cy="54" r="3.7" fill="#fff"/></svg>')
 
 owner = json.loads((SITE / "owner.json").read_text())
-missing = [k for k in ("name", "contact", "jurisdiction", "bio") if not str(owner.get(k, "")).strip()]
+missing = [k for k in ("name", "contact", "bio") if not str(owner.get(k, "")).strip()]
 assert not missing, f"website/owner.json is missing: {missing}"
 contact = owner["contact"].strip()
 CONTACT_HREF = ("mailto:" + contact) if "@" in contact and "://" not in contact else contact
@@ -80,7 +80,7 @@ add = (SITE / "add.template.html").read_text().replace("{{VERSION}}", VERSION)
 # the build stops if any of it is missing, so a placeholder can never go live.
 legal = {"OWNER_NAME": html_escape(owner["name"].strip()), "CONTACT": html_escape(contact),
          "CONTACT_HREF": html_escape(CONTACT_HREF),
-         "JURISDICTION": html_escape(owner["jurisdiction"].strip()), "LEGAL_DATE": LEGAL_DATE,
+         "LEGAL_DATE": LEGAL_DATE,
          "LEGAL_STYLE": (SITE / "legal.css.html").read_text()}
 for page in ("privacy", "terms"):
     text = (SITE / f"{page}.template.html").read_text()

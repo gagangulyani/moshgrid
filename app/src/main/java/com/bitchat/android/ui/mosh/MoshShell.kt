@@ -421,6 +421,18 @@ private fun AboutPage() {
         }
         MoshActionRow("Privacy policy", "What MoshGrid collects and why", Icons.Outlined.Info) { openWeb(context, PRIVACY_URL) }
         MoshActionRow("Terms of use", "The rules for using MoshGrid", Icons.Outlined.Info) { openWeb(context, TERMS_URL) }
+        Text("Made by Gagan Deep Singh", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 12.dp))
+        Text("Product engineer and indie hacker, based in Noida. I built MoshGrid so friends can find each other at gigs and festivals, even when the phone network gives up.",
+            fontSize = 15.sp, color = cs.onSurfaceVariant)
+        MoshActionRow("LinkedIn", "linkedin.com/in/gagan-gulyani", null) { openWeb(context, "https://www.linkedin.com/in/gagan-gulyani") }
+        MoshActionRow("X", "x.com/GaganGulyani", null) { openWeb(context, "https://x.com/GaganGulyani") }
+        MoshActionRow("Instagram", "instagram.com/life_of_gulyani", null) { openWeb(context, "https://www.instagram.com/life_of_gulyani") }
+        MoshActionRow("Email", "gagangulyanig@gmail.com", null) {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:gagangulyanig@gmail.com"))
+                    .putExtra(Intent.EXTRA_SUBJECT, "MoshGrid").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { com.bitchat.android.mosh.MoshMonitor.failed("open_link_failed", it) }
+        }
     }
 }
 
