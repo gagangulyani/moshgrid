@@ -9,7 +9,12 @@ for attempt in 1 2 3; do
   extra=()
   [ "$attempt" -gt 1 ] && extra=(--refresh-dependencies)
   if ./gradlew --no-daemon --quiet ${extra[@]+"${extra[@]}"} help >/dev/null; then exit 0; fi
-  [ "$attempt" -eq 3 ] && { echo "error: could not resolve Gradle plugins after 3 attempts" >&2; exit 1; }
+  if [ "$attempt" -eq 3 ]; then
+    echo "error: could not resolve Gradle plugins after 3 attempts; network detail:" >&2
+    ./gradlew --no-daemon --info --refresh-dependencies help 2>&1 \
+      | grep -iE "could not (get|head|resolve)|status code|unknown ?host|timed out|connect|ssl|proxy" | head -20 >&2 || true
+    exit 1
+  fi
   echo "Gradle plugin resolution failed (attempt $attempt); retrying in $((attempt * 20))s" >&2
   sleep $((attempt * 20))
 done

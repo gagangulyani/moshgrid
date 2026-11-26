@@ -47,6 +47,13 @@ cp "$CONTAINER_LOCAL_PROPERTIES" "$staging_root/local.properties"
 
 gradle_home="$PROJECT_ROOT/.reproducible-build/$GRADLE_HOME_NAME"
 mkdir -p "$gradle_home"
+# Fetch Gradle and its plugins on the host first, into the same Gradle home the container uses, so
+# the container build doesn't depend on its own network for them (CI containers intermittently
+# fail to resolve plugins). Only the download cache is shared; build outputs are unaffected.
+if command -v java >/dev/null 2>&1; then
+  GRADLE_USER_HOME="$gradle_home" "$PROJECT_ROOT/tools/ci/resolve-gradle-plugins.sh" \
+    || echo "warning: host-side plugin prefetch failed; the container will try itself" >&2
+fi
 
 docker build \
   --platform linux/amd64 \
