@@ -62,14 +62,14 @@ import com.bitchat.android.mosh.MoshRuntime
 import com.bitchat.android.ui.ChatViewModel
 
 /** Pages opened from home (⋮ menu, network button, You), shown full screen with a back arrow. */
-private enum class Page { FRIENDS, NETWORK, LOCATION, MAPS, PROBLEMS, ABOUT }
+private enum class Page { FRIENDS, NETWORK, LOCATION, MAPS, PROBLEMS, ABOUT, LINKS, MET }
 
 /** How loud an in-app banner is: Help is solid red, problems are amber, the rest are plain tiles. */
 private enum class Tone { HELP, WARN, INFO }
 
 /**
- * MoshGrid's top level, laid out as in the design: first-run setup, then Chats as home, a big Find
- * pill in the middle of the bottom bar (with the Ask for help bar above it), and You on the right.
+ * MoshGrid's top level: first-run setup, then Chats as home, and a bottom bar of four equal tabs
+ * (Chats, Find, Share, You). Find has the Ask for help bar above the bottom bar.
  */
 @Composable
 fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null, openGroup: Pair<String, Long>? = null,
@@ -78,7 +78,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
     val wipes by MoshRuntime.wipes.collectAsState()
     var onboarded by remember(wipes) { mutableStateOf(prefs.onboardingDone) }
     if (!onboarded) {
-        MoshOnboarding(prefs, chatViewModel.nickname.value, onName = { chatViewModel.setNickname(it) }) { onboarded = true }
+        MoshOnboarding(prefs, chatViewModel.nickname.collectAsState().value, onName = { chatViewModel.setNickname(it) }) { onboarded = true }
         return
     }
     var tab by remember { mutableStateOf(HomeTab.CHATS) }
@@ -99,6 +99,12 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
         if (openFind != null) { findFocus = openFind.first; showHelp = false; page = null; tab = HomeTab.FIND }
     }
     var findMeeting by remember { mutableStateOf(false) }
+    // The app icon shortcut and socials links (https://moshgrid.vercel.app/s#…) open the Share tab.
+    val shareRequest by com.bitchat.android.mosh.MoshSocials.shareRequests.collectAsState()
+    val openedCard by com.bitchat.android.mosh.MoshSocials.opened.collectAsState()
+    val goShare = { showHelp = false; page = null; groupOpen = null; tab = HomeTab.SHARE }
+    LaunchedEffect(shareRequest) { if (shareRequest != 0L) goShare() }
+    LaunchedEffect(openedCard) { if (openedCard != null) goShare() }
     val help by MoshRuntime.store.activeHelp.collectAsState()
     var hiddenHelp by remember { mutableStateOf(emptyMap<String, Long>()) }
     val context = LocalContext.current
@@ -185,6 +191,8 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
             page == Page.MAPS -> MoshPage("Offline maps", { page = null }) { OfflineMapsScreen() }
             page == Page.PROBLEMS -> MoshPage("Crash reports", { page = null }) { ProblemsPage() }
             page == Page.ABOUT -> MoshPage("About", { page = null }) { AboutPage() }
+            page == Page.LINKS -> MoshPage("My links", { page = null }) { EditLinksPage() }
+            page == Page.MET -> MoshPage("People I met", { page = null }) { PeopleMetPage() }
             else -> Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f)) {
                     when (tab) {
@@ -217,6 +225,8 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
                                 }
                             }
                         }
+                        HomeTab.SHARE -> ShareTab(chatViewModel, onEditLinks = { page = Page.LINKS }, onPeopleMet = { page = Page.MET },
+                            banners = { Column { banners() } })
                         HomeTab.YOU -> YouScreen(
                             name = chatViewModel.nickname.collectAsState().value,
                             onMyCode = { chatViewModel.showVerificationSheet() },
@@ -226,6 +236,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
                             onNetwork = { page = Page.NETWORK },
                             onProblems = { page = Page.PROBLEMS },
                             onAbout = { page = Page.ABOUT },
+                            onErase = { chatViewModel.panicClearAllData() },
                         )
                     }
                 }
@@ -237,6 +248,9 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
     // Sheets that open over any screen: adding a friend by QR code, and a private chat.
     if (showVerification) {
         com.bitchat.android.ui.VerificationSheet(isPresented = true, onDismiss = chatViewModel::hideVerificationSheet, viewModel = chatViewModel)
+    }
+    openedCard?.let { card ->
+        SocialsCardSheet(card, savedAt = null) { com.bitchat.android.mosh.MoshSocials.closeOpened() }
     }
     chatPeer?.let { peer ->
         com.bitchat.android.ui.PrivateChatSheet(isPresented = true, peerID = peer, viewModel = chatViewModel, onDismiss = {
@@ -254,7 +268,7 @@ fun MoshShell(chatViewModel: ChatViewModel, openFind: Pair<String, Long>? = null
 @Composable
 private fun YouScreen(
     name: String, onMyCode: () -> Unit, onFriends: () -> Unit, onLocation: () -> Unit, onMaps: () -> Unit,
-    onNetwork: () -> Unit, onProblems: () -> Unit, onAbout: () -> Unit,
+    onNetwork: () -> Unit, onProblems: () -> Unit, onAbout: () -> Unit, onErase: () -> Unit,
 ) {
     val prefs = MoshRuntime.prefs
     val cs = MaterialTheme.colorScheme
@@ -271,7 +285,7 @@ private fun YouScreen(
                 MyPhotoAvatar(name, 56.dp)
                 Column(Modifier.weight(1f)) {
                     Text(name.ifBlank { "No name yet" }, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                    Text(if (com.bitchat.android.mosh.ProfilePhotos.images.collectAsState().value.containsKey("me")) "Your name and code" else "Tap the circle to add a photo", fontSize = 14.sp, color = cs.onSurfaceVariant)
+                    Text(if (com.bitchat.android.mosh.ProfilePhotos.images.collectAsState().value.containsKey("me")) "Your name and friend code" else "Tap the circle to add a photo", fontSize = 14.sp, color = cs.onSurfaceVariant)
                 }
                 androidx.compose.material3.Icon(Icons.Outlined.QrCode2, contentDescription = null, tint = cs.primary,
                     modifier = Modifier.size(28.dp))
@@ -298,9 +312,27 @@ private fun YouScreen(
                 MoshActionRow("Crash reports", if (prefs.monitoringOptIn) "On" else "Off", Icons.Outlined.BugReport, onProblems)
                 MoshActionRow("About", "Version ${appVersion(LocalContext.current)} · open source", Icons.Outlined.Info, onAbout)
             }
+            EraseRow(onErase)
         }
         Spacer(Modifier.height(24.dp))
     }
+}
+
+/** Panic wipe: erases everything MoshGrid keeps on this phone, after one confirmation. */
+@Composable
+private fun EraseRow(onErase: () -> Unit) {
+    var ask by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(MoshShapes.Tile)
+        .clickable(role = androidx.compose.ui.semantics.Role.Button) { ask = true }.padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text("Erase everything on this phone", color = Color(0xFFFF6B6B), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+    }
+    if (ask) androidx.compose.material3.AlertDialog(onDismissRequest = { ask = false },
+        title = { Text("Erase everything?") },
+        text = { Text("Deletes your friends, chats, photos, saved maps, socials links, people you met and your MoshGrid identity, " +
+            "then starts setup again. If your Help is on, friends get one last message that it's off. This can't be undone.") },
+        confirmButton = { TextButton(onClick = { ask = false; onErase() }) { Text("Erase everything", color = Color(0xFFFF6B6B)) } },
+        dismissButton = { TextButton(onClick = { ask = false }) { Text("Cancel") } })
 }
 
 /** Location sharing: one switch and what it means. */

@@ -491,7 +491,7 @@ private fun SecondaryLink(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ScannerView(
+internal fun ScannerView(
     onScan: (String) -> Unit
 ) {
     val context = LocalContext.current

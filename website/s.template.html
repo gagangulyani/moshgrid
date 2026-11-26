@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Socials shared at a gig · MoshGrid</title>
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/poi.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; background: #000; color: #fff; font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { width: min(440px, calc(100% - 40px)); margin: 0 auto; padding: 32px 0 40px; display: flex; flex-direction: column; gap: 14px; }
+  img.logo { width: 48px; height: 48px; }
+  h1 { font-size: 34px; line-height: 1.1; margin: 8px 0 0; font-weight: 800; overflow-wrap: anywhere; }
+  p { color: #BDBDBD; margin: 0; }
+  ul { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  a.link { display: flex; flex-direction: column; background: #1A1A1A; color: #fff; text-decoration: none; border-radius: 20px; padding: 14px 18px; }
+  a.link .site { font-size: 14px; color: #BDBDBD; }
+  a.link .addr { font-weight: 700; overflow-wrap: anywhere; }
+  a.btn { display: block; text-align: center; text-decoration: none; font-weight: 800; border-radius: 999px; padding: 16px 20px; background: #C6FF3D; color: #000; margin-top: 8px; }
+  a:focus-visible { outline: 3px solid #3DF2FF; outline-offset: 3px; }
+  .small { font-size: 14px; color: #8A8A8A; }
+  .bad { color: #FF8A80; }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="/poi.svg" alt="">
+  <h1 id="title">Socials shared at a gig</h1>
+  <p id="lead">Someone you met shared these links. Check each address before you open it.</p>
+  <ul id="links"></ul>
+  <p class="small">The links come from the code itself, after the # in this page's address, which your browser keeps on your phone. Nothing was sent to MoshGrid.</p>
+  <a class="btn" href="/#install">Get MoshGrid for Android (v{{VERSION}})</a>
+</main>
+<script>
+  // Same rules as the app (docs/MOSH_SOCIALS.md). Anything outside them shows the broken-code message.
+  var LINK = /^https:\/\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}(?::[0-9]{1,5})?(?:[\/?#][\x21-\x7E]*)?$/;
+  var BAD = /["<>\\^`{|}]/;
+  var SITES = {"instagram.com":"Instagram","open.spotify.com":"Spotify","spotify.com":"Spotify","x.com":"X","twitter.com":"X",
+    "snapchat.com":"Snapchat","tiktok.com":"TikTok","youtube.com":"YouTube","youtu.be":"YouTube","soundcloud.com":"SoundCloud",
+    "linkedin.com":"LinkedIn","facebook.com":"Facebook","threads.net":"Threads","bsky.app":"Bluesky","music.apple.com":"Apple Music",
+    "github.com":"GitHub","t.me":"Telegram","linktr.ee":"Linktree","bandcamp.com":"Bandcamp"};
+  function text(part) {
+    if (!/^[A-Za-z0-9_-]*$/.test(part)) throw 0;
+    var b = atob(part.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((part.length + 3) % 4));
+    var bytes = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) bytes[i] = b.charCodeAt(i);
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  }
+  function host(l) { return l.slice(8).split(/[\/?#:]/)[0].toLowerCase().replace(/^www\./, "").replace(/^m\./, ""); }
+  function read() {
+    var full = location.href;
+    if (full.length > 2200) return null;
+    var parts = location.hash.slice(1).split(".");
+    if (parts.length < 3 || parts.length > 8 || parts[0] !== "1") return null;
+    var s = parts.slice(1).map(text);
+    var name = s[0], links = s.slice(1);
+    if (name.length > 40 || /[\u0000-\u001F\u007F-\u009F]/.test(name) || name !== name.trim()) return null;
+    for (var j = 0; j < links.length; j++) {
+      var l = links[j];
+      if (l.length > 200 || !LINK.test(l) || BAD.test(l) || links.indexOf(l) !== j) return null;
+    }
+    return { name: name, links: links };
+  }
+  var card = null;
+  try { card = read(); } catch (e) { card = null; }
+  if (card) {
+    if (card.name) { document.getElementById("title").textContent = card.name + "'s socials"; document.title = card.name + "'s socials · MoshGrid"; }
+    var ul = document.getElementById("links");
+    card.links.forEach(function (l) {
+      var li = document.createElement("li"), a = document.createElement("a");
+      a.className = "link"; a.href = l; a.rel = "noopener noreferrer nofollow"; a.target = "_blank";
+      var site = document.createElement("span"); site.className = "site"; site.textContent = SITES[host(l)] || host(l);
+      var addr = document.createElement("span"); addr.className = "addr"; addr.textContent = l.slice(8).replace(/^www\./, "").replace(/\/$/, "");
+      a.appendChild(site); a.appendChild(addr); li.appendChild(a); ul.appendChild(li);
+    });
+  } else {
+    document.getElementById("title").textContent = "This socials code is broken";
+    var lead = document.getElementById("lead");
+    lead.className = "bad";
+    lead.textContent = "Part of it is missing or it holds something that isn't a web link. Ask them to show their code again.";
+  }
+</script>
+</body>
+</html>

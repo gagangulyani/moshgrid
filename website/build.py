@@ -58,6 +58,9 @@ for img in (SITE / "img").iterdir():
 add = (SITE / "add.template.html").read_text().replace("{{VERSION}}", VERSION)
 (DIST / "add.html").write_text(add)
 
+# Socials codes land here (https://moshgrid.vercel.app/s#…); the links stay in the fragment.
+(DIST / "s.html").write_text((SITE / "s.template.html").read_text().replace("{{VERSION}}", VERSION))
+
 # Lets Android open invite links straight in the app (verified App Link), for the release key only.
 (DIST / ".well-known").mkdir()
 (DIST / ".well-known" / "assetlinks.json").write_text(json.dumps([{

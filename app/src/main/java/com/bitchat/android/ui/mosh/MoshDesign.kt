@@ -74,12 +74,19 @@ fun MoshAvatar(name: String, key: String, size: Dp = 50.dp) {
             modifier = Modifier.size(size).clip(CircleShape).background(avatarColor(key)))
         return
     }
-    val initials = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2)
-        .joinToString("") { it.first().uppercase() }.ifEmpty { "?" }.take(2)
+    val initials = avatarInitials(name)
     Box(Modifier.size(size).clip(CircleShape).background(avatarColor(key)), contentAlignment = Alignment.Center) {
         Text(initials, color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = (size.value * 0.3f).sp)
     }
 }
+
+/**
+ * Up to two initials: the first letter or digit of the first two words that have one. Emoji and
+ * symbols are skipped, so a name like "Jo 🎧" gives "J" instead of half an emoji.
+ */
+internal fun avatarInitials(name: String): String = name.trim().split(Regex("\\s+"))
+    .mapNotNull { w -> w.codePoints().filter { Character.isLetterOrDigit(it) }.findFirst().orElse(-1).takeIf { it >= 0 } }
+    .take(2).joinToString("") { String(Character.toChars(it)).uppercase() }.ifEmpty { "?" }
 
 /** Big rounded tile: a small grey label over a bold value (Network, Find). */
 @Composable

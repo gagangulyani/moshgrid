@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app icon: "Show my socials" opens the Share tab on your code. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="show_socials"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_socials"
+        android:shortcutShortLabel="@string/shortcut_socials_short"
+        android:shortcutLongLabel="@string/shortcut_socials_long">
+        <intent
+            android:action="com.moshgrid.action.SHOW_SOCIALS"
+            android:targetPackage="com.moshgrid.android"
+            android:targetClass="com.bitchat.android.MainActivity" />
+    </shortcut>
+</shortcuts>

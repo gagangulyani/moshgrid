@@ -146,7 +146,43 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="moshgrid.vercel.app" android:path="/add" />
             </intent-filter>
+            <!-- MoshGrid socials codes, opened with the phone camera. The links are in the #fragment. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="moshgrid.vercel.app" android:path="/s" />
+            </intent-filter>
+            <!-- App icon shortcut: Show my socials. -->
+            <intent-filter>
+                <action android:name="com.moshgrid.action.SHOW_SOCIALS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- My socials code on its own; may show over the lock screen (code only). -->
+        <activity
+            android:name=".ui.mosh.ShareCodeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.BitchatAndroid" />
+
+        <!-- Quick Settings tile: My socials. -->
+        <service
+            android:name=".mosh.SocialsTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_qr_code"
+            android:label="@string/tile_socials"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <!-- Persistent foreground service to run the mesh in background -->
         <service

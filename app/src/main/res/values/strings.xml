@@ -6,6 +6,9 @@
     <string name="cashu_redeem_wallet">Redeem in wallet</string>
     <string name="cashu_redeem_web">Redeem on web</string>
     <string name="app_name">MoshGrid</string>
+    <string name="shortcut_socials_short" translatable="false">My socials</string>
+    <string name="shortcut_socials_long" translatable="false">Show my socials code</string>
+    <string name="tile_socials" translatable="false">My socials</string>
     <string name="permission_bluetooth_rationale">Bluetooth permission is required for peer-to-peer messaging without internet.</string>
     <string name="permission_location_rationale">Location permission is required to discover nearby devices via Bluetooth.</string>
     <string name="permission_notification_rationale">Notification permission is required to alert you of new messages.</string>

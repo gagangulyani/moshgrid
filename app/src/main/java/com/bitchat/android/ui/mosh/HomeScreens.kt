@@ -33,6 +33,13 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.QrCode
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
@@ -79,45 +86,40 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-/** The three places in the design's bottom bar: Chats, the big Find pill in the middle, and You. */
-enum class HomeTab { CHATS, FIND, YOU }
+/** The four places in the bottom bar, all the same size: Chats, Find, Share and You. */
+enum class HomeTab { CHATS, FIND, SHARE, YOU }
 
-/** Design bottom bar: Chats on the left, a raised acid Find pill in the middle, You on the right. */
+/**
+ * Bottom bar with four equal tabs. The open tab is one green block, icon and label together,
+ * filled icon on top; the others are outlines in grey. Nothing in the bar is louder than the rest.
+ */
 @Composable
 fun MoshHomeNav(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
     val cs = MaterialTheme.colorScheme
     Row(
-        Modifier.navigationBarsPadding().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 16.dp).fillMaxWidth()
-            .height(72.dp).clip(RoundedCornerShape(36.dp)).background(cs.surface).padding(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically,
+        Modifier.navigationBarsPadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 14.dp).fillMaxWidth()
+            .height(72.dp).clip(RoundedCornerShape(24.dp)).background(cs.surface).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        SideTab("Chats", Icons.Outlined.ChatBubbleOutline, selected == HomeTab.CHATS) { onSelect(HomeTab.CHATS) }
-        val findOn = selected == HomeTab.FIND
-        Row(
-            Modifier.height(56.dp).clip(RoundedCornerShape(28.dp)).background(cs.primary)
-                .then(if (findOn) Modifier.border(2.dp, cs.onSurface, RoundedCornerShape(28.dp)) else Modifier)
-                .clickable(role = Role.Tab) { onSelect(HomeTab.FIND) }
-                .semantics { this.selected = findOn }
-                .padding(horizontal = 26.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(Icons.Outlined.Explore, contentDescription = null, tint = cs.onPrimary)
-            Text("Find", color = cs.onPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
-        }
-        SideTab("You", Icons.Outlined.Person, selected == HomeTab.YOU) { onSelect(HomeTab.YOU) }
+        NavTab("Chats", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, selected == HomeTab.CHATS) { onSelect(HomeTab.CHATS) }
+        NavTab("Find", Icons.Filled.Explore, Icons.Outlined.Explore, selected == HomeTab.FIND) { onSelect(HomeTab.FIND) }
+        NavTab("Share", Icons.Filled.QrCode, Icons.Outlined.QrCode, selected == HomeTab.SHARE) { onSelect(HomeTab.SHARE) }
+        NavTab("You", Icons.Filled.Person, Icons.Outlined.Person, selected == HomeTab.YOU) { onSelect(HomeTab.YOU) }
     }
 }
 
 @Composable
-private fun SideTab(label: String, icon: ImageVector, on: Boolean, onClick: () -> Unit) {
+private fun RowScope.NavTab(label: String, on: ImageVector, off: ImageVector, selected: Boolean, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Column(
-        Modifier.widthIn(min = 76.dp).heightIn(min = 56.dp).clip(RoundedCornerShape(28.dp))
-            .clickable(role = Role.Tab, onClick = onClick).semantics { selected = on },
+        Modifier.weight(1f).fillMaxHeight().padding(horizontal = 6.dp, vertical = 9.dp).clip(RoundedCornerShape(16.dp))
+            .background(if (selected) cs.primary else Color.Transparent)
+            .clickable(role = Role.Tab, onClick = onClick).semantics { this.selected = selected },
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = if (on) cs.primary else cs.onSurfaceVariant)
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (on) cs.onSurface else cs.onSurfaceVariant)
+        Icon(if (selected) on else off, contentDescription = null, tint = if (selected) cs.onPrimary else cs.onSurfaceVariant)
+        Text(label, fontSize = 12.sp, maxLines = 1, fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Bold,
+            color = if (selected) cs.onPrimary else cs.onSurfaceVariant)
     }
 }
 

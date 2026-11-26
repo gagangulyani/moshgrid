@@ -77,7 +77,16 @@ class MainActivity : OrientationAwareActivity() {
             val isInvite = (uri.scheme == "moshgrid" && uri.host == "add") ||
                 (uri.scheme == "https" && uri.host == com.bitchat.android.mosh.InviteLink.HOST && uri.path?.trimEnd('/') == "/add")
             if (isInvite) com.bitchat.android.mosh.MoshInvites.open(uri.toString())
+            // A socials code opened with the phone camera (https://moshgrid.vercel.app/s#…) shows the card in the app.
+            if (uri.scheme == "https" && uri.host == com.bitchat.android.mosh.InviteLink.HOST && uri.path?.trimEnd('/') == "/s") {
+                if (!com.bitchat.android.mosh.MoshSocials.open(uri.toString())) {
+                    android.widget.Toast.makeText(this, "That socials link is broken. Ask them to show their code again.",
+                        android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
         }
+        // The app icon's "Show my socials" shortcut.
+        if (intent?.action == com.bitchat.android.mosh.MoshSocials.ACTION_SHOW) com.bitchat.android.mosh.MoshSocials.requestShare()
         if (intent?.getBooleanExtra(com.bitchat.android.mosh.MoshInvites.EXTRA_OPEN_REQUESTS, false) == true) {
             openFriendsRequest.value = System.nanoTime()
         }

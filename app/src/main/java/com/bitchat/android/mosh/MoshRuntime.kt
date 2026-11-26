@@ -139,7 +139,7 @@ object MoshRuntime {
 
     /**
      * Panic wipe of everything MoshGrid keeps: own Help (after one last cancel), friends' Help and
-     * locations, the meeting point, settings and diagnostics. Run before the identity is wiped.
+     * locations, the meeting point, settings, socials links and people met, and diagnostics. Run before the identity is wiped.
      */
     fun wipe(context: Context) {
         val app = context.applicationContext
@@ -157,6 +157,7 @@ object MoshRuntime {
         _myLocation.value = null
         _lastStop.value = null
         MoshMonitor.wipe(app)
+        MoshSocials.wipe(app)
         _wipes.value += 1
     }
 

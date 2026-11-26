@@ -518,8 +518,7 @@ private fun Radar(blips: List<Blip>, headingDeg: Double, onPick: (String) -> Uni
     }
 }
 
-private fun initials(name: String) = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2)
-    .joinToString("") { it.first().uppercase() }.ifEmpty { "?" }.take(2)
+private fun initials(name: String) = avatarInitials(name)
 
 /** [stroke] is white for whoever is being found, so they stand out among several friends. */
 private data class Pin(val lat: Double, val lon: Double, val color: String, val radius: Float, val stroke: String = "#000000")
