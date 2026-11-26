@@ -294,19 +294,9 @@ class NostrDirectMessageHandler(
                 ?.peerNickname
                 ?.takeUnless { it.equals("Unknown", ignoreCase = true) }
                 ?: senderNickname
-            val guidance = if (control.isFavorite) {
-                if (relationship?.isFavorite == true) {
-                    " - mutual! You can continue DMs via Nostr when out of mesh."
-                } else {
-                    " - favorite back to continue DMs later."
-                }
-            } else {
-                ". DMs over Nostr will pause unless you both favorite again."
-            }
-            val action = if (control.isFavorite) "favorited" else "unfavorited"
             val systemMessage = BitchatMessage(
                 sender = "system",
-                content = "$displayName $action you$guidance",
+                content = com.bitchat.android.mosh.MoshNotices.friendChange(displayName, control.isFavorite, relationship?.isFavorite == true),
                 timestamp = timestamp,
                 isRelay = false,
                 isPrivate = true,

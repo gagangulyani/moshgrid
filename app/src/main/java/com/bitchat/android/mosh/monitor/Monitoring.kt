@@ -17,7 +17,9 @@ object Scrubber {
     const val USER_REPORT = "user_report"
 
     fun scrub(event: SentryEvent): SentryEvent {
-        event.user = null
+        // No user, and an explicit placeholder address, so the server doesn't fill in and keep the
+        // sender's IP address with the report.
+        event.user = io.sentry.protocol.User().apply { ipAddress = "0.0.0.0" }
         event.serverName = null
         event.request = null
         event.extras?.keys?.toList()?.forEach { event.removeExtra(it) }
@@ -98,6 +100,8 @@ object Monitoring {
         if (dsn.isBlank()) return
         SentryAndroid.init(app) { o ->
             o.dsn = dsn
+            // Test builds report under their own environment, so they never mix with real users' reports.
+            o.environment = if (BuildConfig.DEBUG) "debug" else "production"
             o.isSendDefaultPii = false
             o.isAttachScreenshot = false
             o.isAttachViewHierarchy = false

@@ -104,6 +104,20 @@ for page in ("privacy", "terms"):
     "versionCode": VERSION_CODE, "versionName": VERSION,
     "apk": {"arm64-v8a": {"url": SITE_URL + "downloads/" + arm.name, "sha256": values["SHA_ARM"]},
             "universal": {"url": SITE_URL + "downloads/" + uni.name, "sha256": values["SHA_UNI"]}}}, indent=1) + "\n")
+# Content Security Policy per page: only that page's own inline scripts (by hash) may run, nothing
+# loads from other sites, and nothing can be framed or posted. Inline styles stay allowed.
+import base64
+def csp_for(page_html):
+    hashes = []
+    for body in re.findall(r"<script[^>]*>(.*?)</script>", page_html, re.S):
+        hashes.append("'sha256-" + base64.b64encode(hashlib.sha256(body.encode()).digest()).decode() + "'")
+    script = " ".join(hashes) if hashes else "'none'"
+    return ("default-src 'none'; script-src " + script + "; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+            "font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; "
+            "frame-ancestors 'none'; upgrade-insecure-requests")
+csp_headers = [{"source": src, "headers": [{"key": "Content-Security-Policy", "value": csp_for((DIST / page).read_text())}]}
+               for src, page in (("/", "index.html"), ("/add", "add.html"), ("/s", "s.html"),
+                                 ("/privacy", "privacy.html"), ("/terms", "terms.html"))]
 (DIST / "vercel.json").write_text(json.dumps({"cleanUrls": True, "headers": [
     {"source": "/version.json", "headers": [{"key": "Cache-Control", "value": "no-cache"}]},
     {"source": "/downloads/(.*)", "headers": [{"key": "Content-Disposition", "value": "attachment"}]},
@@ -111,7 +125,7 @@ for page in ("privacy", "terms"):
     {"source": "/(.*)", "headers": [{"key": "X-Content-Type-Options", "value": "nosniff"},
                                     {"key": "Referrer-Policy", "value": "no-referrer"},
                                     {"key": "X-Frame-Options", "value": "DENY"},
-                                    {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()"}]}]}) + "\n")
+                                    {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()"}]}] + csp_headers}) + "\n")
 
 # Search engines and installable-site metadata.
 (DIST / "robots.txt").write_text(f"User-agent: *\nAllow: /\nDisallow: /downloads/\n\nSitemap: {SITE_URL}sitemap.xml\n")

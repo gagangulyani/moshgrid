@@ -653,18 +653,7 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                 }
 
                 val rel = com.bitchat.android.favorites.FavoritesPersistenceService.shared.getFavoriteStatus(noiseKey)
-                val guidance = if (control.isFavorite) {
-                    if (rel?.isFavorite == true) {
-                        " — mutual! You can continue DMs via Nostr when out of mesh."
-                    } else {
-                        " — favorite back to continue DMs later."
-                    }
-                } else {
-                    ". DMs over Nostr will pause unless you both favorite again."
-                }
-
-                val action = if (control.isFavorite) "favorited" else "unfavorited"
-                val notice = "${peerInfo.nickname} $action you$guidance"
+                val notice = com.bitchat.android.mosh.MoshNotices.friendChange(peerInfo.nickname, control.isFavorite, rel?.isFavorite == true)
                 val sys = com.bitchat.android.model.BitchatMessage(
                     sender = "system",
                     content = notice,

@@ -817,7 +817,9 @@ class MainActivity : OrientationAwareActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (pendingMeshForegroundServiceStart) {
+        // Every time the app comes to the front, not just on create: a service started from the
+        // background (after a reboot or update) gets location access back only while the app is open.
+        if (pendingMeshForegroundServiceStart || mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
             startMeshForegroundServiceBestEffort()
         }
     }

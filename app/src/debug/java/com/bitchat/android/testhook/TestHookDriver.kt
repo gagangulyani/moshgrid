@@ -119,6 +119,12 @@ object TestHookDriver {
                     ok("mosh_invite").put("link", link.url())
                 }
             }
+            // Debug only: my real invite link, so a second test phone can open it.
+            "mosh_link" -> {
+                com.bitchat.android.mosh.MoshRuntime.init(context)
+                val link = com.bitchat.android.mosh.MoshInvites.myLink(context)
+                if (link == null) err("mosh_link", "keys not ready") else ok("mosh_link").put("link", link.url())
+            }
             "mosh_me" -> {
                 val lat0 = 28.4689; val lon0 = 77.0664
                 val n = intent.getStringExtra("n")?.toDoubleOrNull() ?: 0.0
@@ -487,6 +493,19 @@ object TestHookDriver {
             .put("meeting_label", store.meetingPoint.value?.label ?: JSONObject.NULL)
             .put("help_active", store.activeHelp.value[peerID]?.alertId ?: JSONObject.NULL)
             .put("help_raised_at", store.activeHelp.value[peerID]?.raisedAtMs ?: JSONObject.NULL)
+            .put("location_at", store.locations.value[peerID]?.takenAtMs ?: JSONObject.NULL)
+            .put("sharing", com.bitchat.android.mosh.MoshRuntime.prefs.shareLocation)
+            .put("internet", com.bitchat.android.mosh.MoshRuntime.prefs.internet)
+            .put("groups", JSONArray().also { arr ->
+                val me = com.bitchat.android.mosh.MoshGroups.myKeyHex()
+                com.bitchat.android.mosh.MoshGroups.store.groups.value.forEach { g ->
+                    arr.put(JSONObject().put("name", g.roster.name).put("members", g.roster.members.size).put("closed", g.closed)
+                        .put("messages", JSONArray().also { ms -> g.messages.forEach { m ->
+                            ms.put(JSONObject().put("text", m.text).put("mine", m.fromKeyHex == me)
+                                .put("states", JSONArray(m.status.values.map { it.state.name }.distinct())))
+                        } }))
+                }
+            })
     }
 
     /** Point Nostr at a local test relay (applies on next app start). Blank clears it. */

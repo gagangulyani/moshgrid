@@ -103,6 +103,8 @@ class MeshForegroundService : Service() {
     // Service lifecycle callbacks and notification state are main-thread confined.
     private val scope = CoroutineScope(Dispatchers.Main.immediate + serviceJob)
     private var isInForeground: Boolean = false
+    /** False when Android left location out of the foreground type (a start from the background, after a reboot or update). */
+    private var hasLocationType: Boolean = false
     private val moshTicker by lazy { com.bitchat.android.mosh.MoshTicker(applicationContext, scope) }
     private var isShuttingDown: Boolean = false
     private var lastNotifiedPeerCount: Int? = null
@@ -222,6 +224,10 @@ class MeshForegroundService : Service() {
             startForegroundCompat(notification)
             isInForeground = true
             lastNotifiedPeerCount = count
+        } else if (isInForeground && !hasLocationType && Build.VERSION.SDK_INT >= 34 && hasLocationPermission()) {
+            // Started from the background (after a reboot or an update), Android allowed no location access.
+            // The app is open now, so ask again; otherwise friends stop getting this phone's location.
+            startForegroundCompat(buildNotification(getUnifiedActivePeerCount()))
         }
 
         return START_STICKY
@@ -363,11 +369,13 @@ class MeshForegroundService : Service() {
             }
             try {
                 startForeground(NOTIFICATION_ID, notification, type)
+                hasLocationType = type and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION != 0
             } catch (e: SecurityException) {
                 // Fallback for cases where "While In Use" permission exists but background start is restricted
                 if (type and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION != 0) {
                      android.util.Log.w("MeshForegroundService", "Failed to start with LOCATION type, falling back to CONNECTED_DEVICE: ${e.message}")
                      startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+                     hasLocationType = false
                 } else {
                     throw e
                 }

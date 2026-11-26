@@ -30,12 +30,13 @@ At a big gig, thousands of phones choke the network and your group scatters. Mos
 - **Adding friends.** Scan each other's QR code in person, or send an invite link in any chat app (or pick one contact to text it to). Nobody is added until you accept their request, links expire after a week, and your contacts never leave the phone. Only friends can see your location or message you.
 - **Share your socials.** The Share tab shows a code with links to your Instagram, Spotify or any profile you add, for people you meet at the gig. Any phone camera opens it as a web page, so they don't need MoshGrid. It holds only the links you tick, never your location or a way to message you. Scan other people's codes on the same tab and save them to People I met. The Quick Settings tile "My socials" shows your code even from the lock screen. See [docs/MOSH_SOCIALS.md](docs/MOSH_SOCIALS.md).
 - **Profile photos.** Add a photo and your friends see it on the compass, in chats and in groups. It goes only to friends, encrypted like your messages.
-- **Stays up to date.** MoshGrid checks moshgrid.vercel.app for new versions, verifies the download is signed with the MoshGrid key, and installs it; Android asks you to confirm when it needs to. To update straight away, tap Check for updates in You, About.
-- **Network status.** See whether MoshGrid is reaching its relay, a backup relay, or only Bluetooth right now.
+- **Stays up to date.** MoshGrid checks moshgrid.vercel.app for new versions, verifies the download is signed with the MoshGrid key, and installs it: on Wi-Fi straight away, on mobile data once the app has been closed for an hour, never while a Help alert is on. Android asks you to confirm when it needs to. To update straight away, tap Check for updates in You, About.
+- **Problems get reported.** Crash reports (on by default, one switch in You turns them off) also cover things that quietly fail, like a button that does nothing, so they can be fixed. They carry no location, messages, names, friends, phone ID or IP address. Report a problem, in You, sends a note you write.
+- **Network status.** See whether MoshGrid is reaching a relay or only Bluetooth right now, and switch Bluetooth or the internet off.
 
 ## How it gets messages through
 
-Every MoshGrid phone passes messages on to the next one over Bluetooth, so a message can hop across the crowd to a friend out of direct range. When any phone has internet, messages also go through MoshGrid's own Nostr relay, end-to-end encrypted, so the relay cannot read them. Sharing your location and using the internet can each be turned off in settings.
+Every MoshGrid phone passes messages on to the next one over Bluetooth, so a message can hop across the crowd to a friend out of direct range. When any phone has internet, messages also go through Nostr relays (MoshGrid's own relay plus four public ones), end-to-end encrypted, so the relays cannot read them. Relays see a phone's IP address and a random app key, not names or numbers. Sharing your location and using the internet can each be turned off in settings.
 
 Honest limits: Bluetooth reaches roughly across a large room between two phones, it works best when there are other MoshGrid phones in between, iPhone isn't supported yet, and MoshGrid is not an emergency service. In danger, find venue staff or call 112.
 
@@ -49,7 +50,7 @@ The app built on top of it is a different product:
 |---|---|---|
 | Who you talk to | Anyone nearby, often strangers, in public rooms and location channels | Only friends you scanned in person |
 | What it's for | Open, anonymous chat | Finding your group at a gig and getting help |
-| Main screen | Chat | Your friends, with a compass to find them one tap away |
+| Main screen | Chat | Chats, with Find, Share and You one tap away |
 | Getting help | Not a feature | Hold-to-send Help that retries until friends get it and says who did |
 | Location | Coarse location channels shared with everyone in them | Your exact spot, shared only with your friends |
 
@@ -66,18 +67,22 @@ Requires JDK 21 and the Android SDK versions in `gradle/libs.versions.toml`.
 ./gradlew testDebugUnitTest
 ```
 
-Protocol specs for MoshGrid's own payloads: `docs/MOSH_GROUPS.md`, `docs/MOSH_PHOTOS.md`, `docs/MOSH_INVITES.md`.
+Protocol specs for MoshGrid's own payloads: `docs/MOSH_GROUPS.md`, `docs/MOSH_PHOTOS.md`, `docs/MOSH_INVITES.md`, `docs/MOSH_SOCIALS.md`. Two-phone end-to-end tests (two emulators and a local relay, never public relays): `tools/release_gate/mosh_e2e.py`.
 
-Release builds are signed with a key that is not in this repository. Crash reporting is off unless you build with `-PsentryDsn=...`, and in the app it is on by default: the switch is shown during setup, nothing is sent before setup ends, and it can be turned off any time in You. Privacy policy: https://moshgrid.vercel.app/privacy. Terms: https://moshgrid.vercel.app/terms. See `AGENTS.md` for project conventions and `docs/` for protocol specs and the release guide.
+Release builds are signed with a key that is not in this repository. Crash and failure reporting is off unless you build with `-PsentryDsn=...`, and in the app it is on by default: the switch is shown during setup, nothing is sent before setup ends, and it can be turned off any time in You. Debug builds report under the `debug` environment. Privacy policy: https://moshgrid.vercel.app/privacy. Terms: https://moshgrid.vercel.app/terms. See `AGENTS.md` for project conventions and `docs/` for protocol specs and the release guide.
 
 ## Verify a download
 
 The website lists the SHA-256 of each APK and of the signing certificate. Compare them with:
 
 ```sh
-shasum -a 256 MoshGrid-1.4.0.apk
-apksigner verify --print-certs MoshGrid-1.4.0.apk
+shasum -a 256 MoshGrid-1.4.1.apk
+apksigner verify --print-certs MoshGrid-1.4.1.apk
 ```
+
+## Made by
+
+Gagan Deep Singh, product engineer and indie hacker in Noida. Contact: gagangulyanig@gmail.com · [LinkedIn](https://www.linkedin.com/in/gagan-gulyani) · [X](https://x.com/GaganGulyani) · [Instagram](https://www.instagram.com/life_of_gulyani). Security issues: see [SECURITY.md](SECURITY.md).
 
 ## Licence
 

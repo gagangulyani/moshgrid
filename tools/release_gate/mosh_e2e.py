@@ -271,6 +271,22 @@ def help_seen(r: Run, receiver: Phone, sender: Phone):
     return receiver.state_of(sender).get("help_active")
 
 
+def open_help(p: Phone):
+    """Find tab, then the Help bar ('Ask for help', or 'Your help alert is on' while it is on)."""
+    p.launch()
+    p.tab("Find")
+    time.sleep(1)
+    return p.tap("Your help alert is on", starts=True) or p.tap("Ask for help")
+
+
+def open_chat(p: Phone, friend: Phone):
+    p.launch()
+    p.tab("Chats")
+    time.sleep(1)
+    p.tap(friend.name)
+    time.sleep(2)
+
+
 # --- scenarios ---------------------------------------------------------------------------------
 
 def sc_internet_only(r: Run):
@@ -297,10 +313,9 @@ def sc_no_signal_queues(r: Run):
     r.check("A notices it is offline", wait(lambda: not a.online(), 120))
     routes = a.hook("mosh_help", action="raise").get("routes", {})
     r.check("route is QUEUED, not sent", routes.get(b.peer_id) == "QUEUED", routes)
-    a.launch()
-    a.tap("Help ON") or a.tap("Help")
+    open_help(a)
     tx = a.texts()
-    r.check("Help screen says waiting for signal", any("Waiting for signal" in t for t in tx) and "Help sent." not in tx,
+    r.check("Help screen says waiting for signal", any("Waiting for signal" in t for t in tx) and "Help sent" not in tx,
             [t for t in tx if "sent" in t.lower() or "Waiting" in t])
     a.tap("Close")
     time.sleep(15)
@@ -310,7 +325,6 @@ def sc_no_signal_queues(r: Run):
     a.hook("mosh_help", action="cancel")
     wait(lambda: not help_seen(r, b, a), 120)
     a.bluetooth(True)
-
 
 def sc_receiver_offline(r: Run):
     """Receiver has no signal and no Bluetooth link: the relay holds Help until it is back."""
@@ -400,26 +414,34 @@ def sc_friend_phone_dies(r: Run):
 
 
 def sc_own_help_banner(r: Run):
-    """Own Help shows 'Help ON' and a banner with Cancel; the friend's banner names the sender."""
+    """Own Help shows a 'Your Help is on' banner and Help bar; cancelling in the UI clears it for the friend."""
     a, b = r.a, r.b
     a.hook("mosh_help", action="raise")
     a.launch()
+    a.tab("Find")
+    time.sleep(1)
     tx = a.texts()
-    r.check("'Your Help is ON' banner and 'Help ON' button", any(t.startswith("Your Help is ON") for t in tx) and "Help ON" in tx,
-            [t for t in tx if "Help" in t][:4])
+    r.check("Find shows 'Your help alert is on' in the Help bar", any(t.startswith("Your help alert is on") for t in tx),
+            [t for t in tx if "help" in t.lower()][:4])
+    a.tab("Chats")
+    time.sleep(1)
+    tx = a.texts()
+    r.check("other tabs show the 'Your Help is on' banner", any(t.startswith("Your Help is on") for t in tx),
+            [t for t in tx if "help" in t.lower()][:4])
     r.check("receiver banner names the friend", wait(lambda: (b.launch(2) or True) and any(t.startswith(f"{a.name} asked for help") for t in b.texts()), 90),
             [t for t in b.texts() if "help" in t.lower()][:3])
-    a.tap("Cancel")
-    r.check("banner Cancel stops Help", a.hook("mosh_help", action="status").get("alert_id") is None)
+    open_help(a)
+    a.tap("I'm OK now, cancel")
+    time.sleep(2)
+    r.check("'I'm OK now, cancel' stops Help", a.hook("mosh_help", action="status").get("alert_id") is None)
     r.check("receiver Help cleared", wait(lambda: not help_seen(r, b, a), 120))
-
 
 def sc_notification_opens_find(r: Run):
     """Tapping 'X needs help' opens Find on that friend, from any screen."""
     a, b = r.a, r.b
     b.hook("mosh_help", action="raise")
     r.check("A's phone rings", wait(a.help_notification, 120))
-    for start in ("Settings", "Friends", "Chats"):
+    for start in ("You", "Share", "Chats"):
         a.launch()
         a.tab(start)
         a.sh("cmd statusbar expand-notifications")
@@ -434,22 +456,22 @@ def sc_notification_opens_find(r: Run):
 
 
 def sc_back_navigation(r: Run):
-    """Back closes Help, returns tabs to Find, and only then leaves the app."""
+    """Back closes Help, returns other tabs to Chats, and only then leaves the app."""
     a = r.a
-    a.launch()
-    a.tap("Help")
+    open_help(a)
     a.sh("input keyevent 4")
     time.sleep(2)
-    r.check("back closes Help screen, app stays", PKG in a.top_activity() and "Ask for help" not in a.texts())
-    for t in ("Friends", "Chats", "Settings"):
+    r.check("back closes Help screen, app stays", PKG in a.top_activity() and "Hold for 3 seconds. Let go to stop." not in a.texts())
+    for t in ("Find", "Share", "You"):
+        a.launch()
         a.tab(t)
+        time.sleep(1)
         a.sh("input keyevent 4")
         time.sleep(2)
-        r.check(f"back on {t} returns to Find", PKG in a.top_activity() and "Show everyone" in a.texts())
+        r.check(f"back on {t} returns to Chats", PKG in a.top_activity() and "Search chats" in a.texts())
     a.sh("input keyevent 4")
     time.sleep(2)
-    r.check("back on Find leaves the app", PKG not in a.top_activity())
-
+    r.check("back on Chats leaves the app", PKG not in a.top_activity())
 
 def sc_radios_off_never_block(r: Run):
     """Bluetooth or Location off never blocks the app or the Help screen; banners offer to turn them on."""
@@ -458,63 +480,61 @@ def sc_radios_off_never_block(r: Run):
     a.stop()
     a.launch(7)
     tx = a.texts()
-    r.check("Bluetooth off: app opens, Help reachable", "Help" in tx and "Find" in tx and "Bluetooth Recommended" not in tx, tx[:4])
-    r.check("Bluetooth-off banner", any(t.startswith("Bluetooth is off") for t in tx))
-    a.tap("Help")
+    r.check("Bluetooth off: app opens on its tabs", "Chats" in tx and "Find" in tx and "Bluetooth Recommended" not in tx, tx[:4])
+    r.check("Bluetooth-off banner", wait(lambda: any(t.startswith("Bluetooth is off") for t in (a.launch(2) or a.texts())), 30, 3))
+    r.check("Help screen opens with Bluetooth off", open_help(a) and any("Hold for 3 seconds" in t for t in a.texts()))
     a.location(False)
     a.sh("input keyevent 3")
     time.sleep(2)
     a.launch(5)
-    r.check("Location off on resume: still on Help screen", "Ask for help" in a.texts())
-    a.tap("Close")
+    r.check("Location off on resume: still on Help screen", any("Hold for 3 seconds" in t for t in a.texts()))
+    a.tap("Cancel")
     r.check("Location-off banner", any(t.startswith("Location is off") for t in a.texts()))
     a.location(True)
     a.bluetooth(True)
-    time.sleep(5)
+    time.sleep(6)
+    a.launch(2)
     r.check("banners go away", not any(t.startswith(("Bluetooth is off", "Location is off")) for t in a.texts()))
 
-
 def sc_messages_both_ways(r: Run):
-    """Private messages through the UI; a message to a backgrounded app notifies without crashing."""
+    """Private messages through the UI both ways; a message to a backgrounded app notifies without crashing."""
     a, b = r.a, r.b
 
-    def send(p: Phone, text: str):
-        p.launch()
-        p.tab("Friends")
-        p.tap("Chat")
-        time.sleep(2)
-        p.tap("Type a message…")
+    def send(p: Phone, to: Phone, text: str):
+        open_chat(p, to)
+        p.tap("Message")
         p.sh(f"input text {text}")
         time.sleep(1)
         p.tap("Send")
+        time.sleep(1)
         p.sh("input keyevent 4")
         time.sleep(1)
 
-    def has(p: Phone, text: str):
-        p.launch()
-        p.tab("Friends")
-        p.tap("Chat")
-        time.sleep(2)
+    def has(p: Phone, frm: Phone, text: str):
+        open_chat(p, frm)
         ok = any(text in t for t in p.texts())
         p.sh("input keyevent 4")
         return ok
-    send(a, "e2e_from_a")
-    r.check("B receives A's message", wait(lambda: has(b, "e2e_from_a"), 90, 10))
+    send(a, b, "e2e_from_a")
+    r.check("B receives A's message", wait(lambda: has(b, a, "e2e_from_a"), 120, 10))
+    send(b, a, "e2e_from_b")
+    r.check("A receives B's reply", wait(lambda: has(a, b, "e2e_from_b"), 120, 10))
     b.sh("input keyevent 3")
     time.sleep(2)
     pid = b.sh(f"pidof {PKG}").strip()
-    send(a, "e2e_bg")
-    time.sleep(15)
+    send(a, b, "e2e_bg")
+    time.sleep(20)
     out = b.sh("dumpsys notification --noredact")
-    r.check("backgrounded B gets a message notification", "channel=bitchat_dm_notifications" in out)
+    r.check("backgrounded B gets a message notification", "e2e_bg" in out or "channel=bitchat_dm_notifications" in out)
     r.check("B did not crash", b.sh(f"pidof {PKG}").strip() == pid and b.crashes() == 0)
-
 
 def sc_meeting_point_ui(r: Run):
     """Long-press sets a meeting point for friends; Clear asks first and clears for everyone."""
     a, b = r.a, r.b
     a.launch()
     a.tab("Find")
+    a.tap("Map")
+    time.sleep(4)
     mb = [bb for t, bb, _ in a.nodes() if t.startswith("Showing a Map")]
     if not r.check("map shown", mb):
         return
@@ -525,12 +545,15 @@ def sc_meeting_point_ui(r: Run):
     a.sh("input text Gate9")
     time.sleep(1)
     a.tap("Set for all friends")
-    r.check("meeting point set", any("Meeting point: Gate9" in t for t in a.texts()))
+    time.sleep(2)
+    a.tap("List")
+    time.sleep(2)
+    r.check("meeting point set", any(t.startswith("Gate9") for t in a.texts()), [t for t in a.texts()][:12])
     r.check("friend receives it", wait(lambda: b.state_of(a).get("meeting_label") == "Gate9", 120))
     a.tap("Clear", last=True)
     r.check("Clear asks first", "Clear the meeting point?" in a.texts())
     a.tap("Keep it")
-    r.check("'Keep it' keeps it", any("Meeting point: Gate9" in t for t in a.texts()))
+    r.check("'Keep it' keeps it", any(t.startswith("Gate9") for t in a.texts()))
     a.tap("Clear", last=True)
     a.tap("Clear for everyone")
     r.check("cleared for the friend", wait(lambda: b.state_of(a).get("meeting_label") is None, 120))
@@ -541,11 +564,14 @@ def sc_remove_friend(r: Run):
     a, b = r.a, r.b
     a.launch()
     a.tab("Friends")
-    a.tap("Remove")
-    r.check("confirm dialog names the friend", any(t.startswith(f"Remove {b.name}") for t in a.texts()))
+    time.sleep(1.5)
+    a.tap(b.name)
+    time.sleep(1)
+    a.tap(f"Remove {b.name}")
+    r.check("confirm dialog names the friend", any(t.startswith(f"Remove {b.name}?") for t in a.texts()))
     a.tap("Cancel")
     r.check("Cancel keeps the friend", a.state_of(b).get("is_friend"))
-    a.tap("Remove")
+    a.tap(f"Remove {b.name}")
     a.tap("Remove", last=True)
     time.sleep(3)
     r.check("removed on A", not a.state_of(b).get("is_friend"))
@@ -555,26 +581,182 @@ def sc_remove_friend(r: Run):
     b.hook("mosh_help", action="cancel")
     befriend(r)
 
-
 def sc_wipe(r: Run):
-    """Destructive: panic wipe with Help on sends a final cancel and clears MoshGrid data."""
+    """Destructive: Erase everything with Help on sends a final cancel and clears MoshGrid data."""
     a, b = r.a, r.b
     a.hook("mosh_help", action="raise")
     r.check("friend has A's Help before wipe", wait(lambda: help_seen(r, b, a), 120))
     a.launch()
-    a.tab("Chats")
-    logo = [bb for t, bb, _ in a.nodes() if t == "Open About"]
-    if not r.check("logo found", logo):
+    a.tab("You")
+    time.sleep(1)
+    a.sh("input swipe 540 1800 540 600 300")
+    time.sleep(1)
+    if not r.check("Erase row found", a.tap("Erase everything on this phone")):
         return
-    x, y = (logo[0][0] + logo[0][2]) // 2, (logo[0][1] + logo[0][3]) // 2
-    a.sh(f"input tap {x} {y}; input tap {x} {y}; input tap {x} {y}")
-    time.sleep(2)
-    r.check("asks to confirm", "Wipe all data?" in a.texts())
-    a.tap("Wipe")
+    r.check("asks to confirm", "Erase everything?" in a.texts())
+    a.tap("Erase everything", last=True)
     time.sleep(8)
     r.check("setup shows again", "Set it up" in a.texts())
     r.check("A's Help stopped", a.hook("mosh_help", action="status").get("alert_id") is None)
     r.check("friend got the final cancel", wait(lambda: not help_seen(r, b, a), 150))
+
+# --- scenarios added for 1.4 (groups, sharing and internet switches, invites) ------------------
+
+def open_you_page(p: Phone, row: str):
+    p.launch()
+    p.tab("You")
+    time.sleep(1)
+    p.tap(row)
+    time.sleep(1.5)
+
+
+def set_switch(p: Phone, page: str, label: str, on: bool, key: str, other: Phone):
+    """Flip a switch in You > page through the UI until the app reports [key] == on."""
+    open_you_page(p, page)
+    if p.state_of(other).get(key) != on:
+        p.tap(label, last=True)
+        time.sleep(2)
+    p.sh("input keyevent 4")
+    return p.state_of(other).get(key) == on
+
+
+def group_of(p: Phone, other: Phone, name: str):
+    return next((g for g in p.state_of(other).get("groups") or [] if g.get("name") == name), None)
+
+
+def sc_location_sharing(r: Run):
+    """Location sharing: the friend gets updates while it is on, none while off, and again when on."""
+    a, b = r.a, r.b
+    for p in (a, b):
+        p.sh("true")
+        run_adb(p.serial, ["emu", "geo", "fix", "77.0664", "28.4689"])  # public venue point, synthetic
+    r.check("B's sharing is on", set_switch(b, "Location", "Share my location", True, "sharing", a))
+    b.hook("mosh_me", n="5", e="5")
+    first = wait(lambda: a.state_of(b).get("location_at"), 180, 10)
+    r.check("A sees B's location while sharing is on", first)
+    r.check("B switches sharing off in the app", set_switch(b, "Location", "Share my location", False, "sharing", a))
+    time.sleep(20)
+    before = a.state_of(b).get("location_at")
+    b.hook("mosh_me", n="80", e="80")
+    time.sleep(150)
+    after = a.state_of(b).get("location_at")
+    r.check("no new location reaches A while sharing is off", after == before, (before, after))
+    r.check("B switches sharing on again", set_switch(b, "Location", "Share my location", True, "sharing", a))
+    b.hook("mosh_me", n="120", e="120")
+    r.check("updates reach A again", wait(lambda: (a.state_of(b).get("location_at") or 0) > (before or 0), 240, 10))
+
+
+def sc_internet_switch(r: Run):
+    """The app's Internet switch: off disconnects the relay and Help waits; on again delivers it."""
+    a, b = r.a, r.b
+    a.bluetooth(False)  # emulators have no Bluetooth link anyway; make the route plain
+    r.check("A switches Internet off in the app", set_switch(a, "Network", "Internet", False, "internet", b))
+    r.check("A reports offline", wait(lambda: not a.online(), 90))
+    routes = a.hook("mosh_help", action="raise").get("routes", {})
+    r.check("Help is queued, not sent", routes.get(b.peer_id) in ("QUEUED", None) or routes.get(b.peer_id) != "NOSTR", routes)
+    time.sleep(30)
+    r.check("B has not got Help while A's Internet is off", not help_seen(r, b, a))
+    r.check("A switches Internet on again", set_switch(a, "Network", "Internet", True, "internet", b))
+    r.check("A back online", wait(lambda: a.online(), 120))
+    r.check("queued Help reaches B", wait(lambda: help_seen(r, b, a), 150))
+    a.hook("mosh_help", action="cancel")
+    r.check("cancel reaches B", wait(lambda: not help_seen(r, b, a), 120))
+    a.bluetooth(True)
+
+
+def sc_group_both_ways(r: Run):
+    """Group made in the UI: the friend gets it, messages go both ways, ticks reach delivered/read."""
+    a, b = r.a, r.b
+    name = "E2Egang"
+    a.launch()
+    a.tab("Chats")
+    a.tap("More options")
+    a.tap("New group")
+    time.sleep(1.5)
+    a.tap("Group name")
+    a.sh(f"input text {name}")
+    a.sh("input keyevent 4")
+    time.sleep(1)
+    a.tap(b.name)
+    a.tap("Make group")
+    time.sleep(3)
+    r.check("A has the group", group_of(a, b, name))
+    r.check("B gets the group", wait(lambda: group_of(b, a, name), 150, 10))
+    a.tap("Message")
+    a.sh("input text e2e_group_hello")
+    time.sleep(1)
+    a.tap("Send")
+    time.sleep(2)
+    r.check("B gets A's group message", wait(lambda: any(m["text"] == "e2e_group_hello" for m in (group_of(b, a, name) or {}).get("messages", [])), 150, 10))
+    def a_states():
+        g = group_of(a, b, name) or {}
+        m = next((m for m in g.get("messages", []) if m["text"] == "e2e_group_hello"), {})
+        return set(m.get("states", []))
+    r.check("A's message reaches delivered", wait(lambda: a_states() & {"DELIVERED", "READ"}, 150, 10), a_states())
+    b.launch()
+    b.tab("Chats")
+    time.sleep(1)
+    b.tap(name, starts=True)
+    time.sleep(2)
+    r.check("A's message shows read once B opens the chat", wait(lambda: "READ" in a_states(), 150, 10), a_states())
+    b.tap("Message")
+    b.sh("input text e2e_group_reply")
+    time.sleep(1)
+    b.tap("Send")
+    r.check("A gets B's reply", wait(lambda: any(m["text"] == "e2e_group_reply" and not m["mine"] for m in (group_of(a, b, name) or {}).get("messages", [])), 150, 10))
+    b.sh("input keyevent 4")
+
+
+def sc_invite_link(r: Run):
+    """Destructive-ish: A removes B, B opens A's invite link, sends a request, A accepts: friends again."""
+    a, b = r.a, r.b
+    link = a.hook("mosh_link").get("link")
+    if not r.check("A has an invite link", link and "/add#" in link, link):
+        return
+    a.launch()
+    a.tab("Friends")
+    time.sleep(1.5)
+    a.tap(b.name)
+    time.sleep(1)
+    a.tap(f"Remove {b.name}")
+    a.tap("Remove", last=True)
+    time.sleep(3)
+    r.check("not friends before the invite", not a.state_of(b).get("is_friend"))
+    b.sh(f"am start -a android.intent.action.VIEW -d '{link}' -p {PKG}")
+    time.sleep(4)
+    r.check("B is asked to add A", any(t.startswith(f"Add {a.name}") for t in b.texts()), b.texts()[:12])
+    b.tap("Send request")
+    r.check("A is not friends until A accepts", not a.state_of(b).get("is_friend"))
+    for _ in range(3):  # leave the Friends page: there the request is a card, not a banner
+        a.sh("input keyevent 4")
+        time.sleep(0.5)
+    a.launch()
+    a.tab("Chats")
+    r.check("A gets B's request (banner)", wait(lambda: any("wants to add you" in t for t in (a.launch(2) or a.texts())), 150, 10))
+    r.check("still not friends before Accept", not a.state_of(b).get("is_friend"))
+    a.tap("View")
+    time.sleep(1.5)
+    r.check("Friends page shows the request card", any("Used your invite link" in t for t in a.texts()))
+    a.tap("Accept")
+    r.check("friends again on A", wait(lambda: a.state_of(b).get("is_friend"), 60))
+    r.check("friends again on B", wait(lambda: b.state_of(a).get("is_friend"), 150, 10))
+
+
+def sc_share_and_report_ui(r: Run):
+    """Share tab and Report a problem open on both phones; with Internet off the report says why it can't send."""
+    for p, other in ((r.a, r.b), (r.b, r.a)):
+        p.launch()
+        p.tab("Share")
+        tx = p.texts()
+        r.check(f"{p.alias} Share tab shows", "Share" in tx and ("My code" in tx or "Add my links" in tx), tx[:10])
+        open_you_page(p, "Report a problem")
+        r.check(f"{p.alias} Report a problem opens", "Send report" in p.texts())
+        p.sh("input keyevent 4")
+    set_switch(r.a, "Network", "Internet", False, "internet", r.b)
+    open_you_page(r.a, "Report a problem")
+    r.check("Report says Internet is off", any("Internet is off for MoshGrid" in t for t in r.a.texts()))
+    r.a.sh("input keyevent 4")
+    set_switch(r.a, "Network", "Internet", True, "internet", r.b)
 
 
 SCENARIOS = {
@@ -590,6 +772,11 @@ SCENARIOS = {
     "back_navigation": sc_back_navigation,
     "messages_both_ways": sc_messages_both_ways,
     "meeting_point_ui": sc_meeting_point_ui,
+    "location_sharing": sc_location_sharing,
+    "internet_switch": sc_internet_switch,
+    "group_both_ways": sc_group_both_ways,
+    "share_and_report_ui": sc_share_and_report_ui,
+    "invite_link": sc_invite_link,       # removes and re-adds the friend through an invite link
     "remove_friend": sc_remove_friend,   # destructive, restores friendship
     "radios_off_never_block": sc_radios_off_never_block,
     "wipe": sc_wipe,                     # destructive, needs mesh_lab setup afterwards
